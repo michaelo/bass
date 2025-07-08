@@ -1,0 +1,19 @@
+{
+    "globalConfig": {
+
+    },
+    "pipelines": {
+        "jobname": {
+            "repository": "file:///tmp/mypipeline",
+            "job-path": "job.py",
+            "ref-pattern": "main",
+            "msg-pattern": ".*"
+        },
+        "jobname2": {
+            "repository": "file:///tmp/mypipeline2",
+            "job-path": "job.py",
+            "ref-pattern": "feature/.*",
+            "msg-pattern": ".*"
+        }
+    }
+}
