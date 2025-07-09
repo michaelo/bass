@@ -39,7 +39,7 @@ def parse_path(path_raw: str) -> tuple[str, dict[str:str]]:
     query = None
     params = {}
 
-    if len(splits)==1:
+    if len(splits) == 1:
         base = splits[0]
     else:
         (base, query) = splits

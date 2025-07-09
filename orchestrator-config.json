@@ -5,7 +5,9 @@
     "pipelines": {
         "jobname": {
             "repository": "file:///tmp/mypipeline",
+            "_1": "TBD: Specify branch here? Or leave to webhook? For pull: need to specify branch",
             "job-path": "job.py",
+            "_2": "ref pattern only makes sense for webhook?",
             "ref-pattern": "main",
             "msg-pattern": ".*"
         },

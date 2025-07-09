@@ -1,8 +1,94 @@
 from urllib import request as urq, error
-from typing import Literal
+from typing import Literal, Callable
 import json
 import os
 import datetime
+import argparse
+import logging
+import re
+# from urllib.parse import urlparse
+
+type Severity = Literal["TRACE", "DEBUG", "INFO", "WARN", "ERROR", "FATAL"]
+
+def generate_span(trace_id: str, parent_span_id: None|str, span_id: str, service: str, name: str, time_from: datetime.datetime, time_to: datetime.datetime, status: int):
+    return {
+        "resourceSpans": [
+            {
+                "resource": {
+                "attributes": [
+                    {
+                        "key": "service.name",
+                        "value": {
+                            "stringValue": service
+                        }
+                    }
+                ]
+                },
+                "scopeSpans": [
+                    {
+                        "spans": [
+                            {
+                                "traceId": trace_id,
+                                "spanId": span_id,
+                                "parentSpanId": parent_span_id,
+                                "startTimeUnixNano": datetime_to_nano(time_from),
+                                "endTimeUnixNano": datetime_to_nano(time_to),
+                                "name": name,
+                                "kind": 2,
+                                "status": {
+                                    "code": status
+                                }
+                            },
+                        ]
+                    }
+                ]
+            }
+        ]
+    }
+
+def generate_log(trace_id: str, span_id: str, service: str, severity: Severity, message: str):
+    sevMap = {
+        "TRACE": 1,
+        "DEBUG": 5,
+        "INFO": 9,
+        "WARN": 13,
+        "ERROR": 17,
+        "FATAL": 21
+    }
+
+    return {
+        "resourceLogs": [
+            {
+                "resource": {
+                    "attributes": [
+                        {
+                            "key": "service.name",
+                            "value": {
+                                "stringValue": service
+                            }
+                        }
+                    ]
+                },
+                "scopeLogs": [
+                    {
+                        "logRecords": [
+                            {
+                                "timeUnixNano": datetime_to_nano(utcnow()),
+                                "observedTimeUnixNano": datetime_to_nano(utcnow()),
+                                "severityNumber": sevMap[severity],
+                                # "severityText": "Information",
+                                "traceId": trace_id,
+                                "spanId": span_id,
+                                "body": {
+                                    "stringValue": message
+                                }
+                            }
+                        ]
+                    }
+                ]
+            }
+        ]
+    }
 
 def request(method: Literal["GET", "POST", "PUT", "DELETE"], url, payload=None, headers={}) -> tuple[int, str|None]:
     req = urq.Request(url)
@@ -18,38 +104,147 @@ def request(method: Literal["GET", "POST", "PUT", "DELETE"], url, payload=None, 
             return (response.status, response.read().decode("utf-8"))
     except error.HTTPError as e:
         return (e.code, e.read().decode("utf-8"))
+    except error.URLError  as e:
+        return (0, e.reason)
 
 def utcnow() -> datetime.datetime:
     return datetime.datetime.now(tz=datetime.timezone.utc)
 
-def nowNano() -> int:
+def now_nano() -> int:
     """Returns current UNIX timestamp in nanoseconds"""
     return int((utcnow() - datetime.timedelta(seconds=5)).timestamp() * 1000000000)
 
-def datetimeToNano(time: datetime.datetime):
-    return int(time.time() * 1000000000)
+def datetime_to_nano(time: datetime.datetime):
+    return int(time.timestamp() * 1000000000)
 
-def generateHexString(bytes: int):
+def generate_hex_string(bytes: int):
     return os.urandom(bytes).hex()
 
-def generateTraceId():
-    return generateHexString(16)
+def generate_trace_id():
+    return generate_hex_string(16)
 
-def generateSpanId():
-    return generateHexString(8)
+def generate_span_id():
+    return generate_hex_string(8)
 
-def build(pipeline):
+# Execute lambda and wrap result as span
+def execute_span(span_sender: callable, span_name: str, func: callable):
     pass
 
-def validate(pipeline):
-    # Perform necessary ducktyping on pipeline-object to verify it's structure
-    # TBD if it always shall be called, or if it's opt-in to do while developing pipeline
-    pass
+def check_if_changeset_matches(changeset: list[str], match_criteria: None|str):
+    # No criteria is all criteria
+    if not match_criteria:
+        return True
+    
+    # If changeset provided, and "if-changes-match"-filter set: verify if any of them matches
+    exp = re.compile(match_criteria)
+    
+    for change in changeset:
+        if exp.match(change) != None:
+            return True
+        
+    return False
+
+def test_check_if_changeset_matches():
+    assert check_if_changeset_matches([], None)
+    assert check_if_changeset_matches(["some/path"], None)
+    assert check_if_changeset_matches(["some/path", "another/path"], "^another")
+    assert not check_if_changeset_matches(["some/path"], "^another")
 
 
-def processStep(buildCtx, step):
+def process_step(buildCtx, step):
     # take time
     # execute step, store log and status code
     # take time
     # generate and send span and log entry
     pass
+
+
+def job_argparse(pipeline_name:str):
+    parser = argparse.ArgumentParser(
+                    prog = pipeline_name,
+                    description = None,
+                    epilog = None)
+    
+    # TBD: support single param comma-separated list as well?
+    parser.add_argument("-s", "--service-name", type=str, action="store", default=f"pipeline:{pipeline_name}", help="Name to use for otel trace")
+    parser.add_argument("-i", "--trace-id", type=str, action="store", default=generate_trace_id(), help="")
+    parser.add_argument("-g", "--generate-root-span", action="store_true", default=False, help="")
+    parser.add_argument("-t", "--trace-endpoint", type=str, action="store", default="http://localhost:4318/v1/traces", help="")
+    parser.add_argument("-l", "--log-endpoint", type=str, action="store", default="http://localhost:4318/v1/logs", help="")
+    parser.add_argument("-f", "--force", action="store_true", default=False, help="Will force build all steps")
+
+    parser.add_argument("-c", "--changeset", action="append", default=[], help="Modified path. Can be specified multiple times.")
+    
+    return parser.parse_args()
+
+
+# TBD: rename to "assert_pipeline" and return nothing?
+def assert_pipeline(pipeline) -> bool:
+    """Asserts that a pipeline is properly setup"""
+    # Perform necessary ducktyping on pipeline-object to verify it's structure
+    # TBD if it always shall be called, or if it's opt-in to do while developing pipeline
+    assert "name" in pipeline and type(pipeline["name"]) == str
+    assert "steps" in pipeline and type(pipeline["steps"]) == list
+
+    assert len(pipeline["steps"]) > 0
+
+    for step in pipeline["steps"]:
+        assert "name" in step and type(step["name"]) == str
+        if "if-changeset-matches" in step:
+            assert re.compile(step["if-changeset-matches"])
+
+        assert "exec" in step
+        assert callable(step["exec"]) or type(step["exec"]) == str
+
+def create_span_sender(trace_endpoint: str, service_name: str, trace_id: str) -> Callable[[str, str, str, datetime.datetime, datetime.datetime, int], None]:
+    def span_sender(name: str, parent_span_id: None|str, span_id: str, time_from:datetime.datetime, time_to:datetime.datetime, status: int):
+        span = generate_span(trace_id, parent_span_id, span_id, service_name, name, time_from, time_to, status)
+        (status, body) = request("POST", trace_endpoint, span, headers={"Content-Type": "application/json"})
+        if status != 200:
+            logging.error(f"Could not post span. Reason: {body}")
+
+    return span_sender
+
+def create_log_sender(log_endpoint: str, service_name: str, trace_id: str) -> Callable[[str, Severity, str], None]:
+    def log_sender(span_id: str, severity: Severity, message: str):
+        log = generate_log(trace_id, span_id, service_name, severity, message)
+        (status, body) = request("POST", log_endpoint, log, headers={"Content-Type": "application/json"})
+        if status != 200:
+            logging.error(f"Could not post log. Reason: {body}")
+
+    return log_sender
+
+import time
+def build(pipeline):
+    args = job_argparse(pipeline["name"])
+    print(args)
+
+    spanner = create_span_sender(args.trace_endpoint, args.service_name, args.trace_id)
+    logger = create_log_sender(args.log_endpoint, args.service_name, args.trace_id)
+    root_span_id = generate_span_id()
+
+    root_start = utcnow()
+
+    for step in pipeline["steps"]:
+        span_id = generate_span_id()
+        step_start = utcnow()
+        
+
+        if not check_if_changeset_matches(args.changeset, step.get("if-changeset-matches", None)):
+            logging.info("skipping step")
+            logger(span_id, "INFO", f"Skipping step: {step['name']}")
+        else:
+            if type(step["exec"]) == str:
+                print("subprocess")
+                logger(span_id, "INFO", f"Executing suprocess")
+            elif callable(step["exec"]):
+                logger(span_id, "INFO", f"Executing function")
+
+        time.sleep(0.5)
+        step_end = utcnow()
+        spanner(f"step:{step['name']}", root_span_id, span_id, step_start, step_end, 1)
+
+    root_end = utcnow()
+    if args.generate_root_span:
+        # TODO: fix status in case of errors
+        spanner(f"pipeline:{pipeline['name']}", None, root_span_id, root_start, root_end, 1)

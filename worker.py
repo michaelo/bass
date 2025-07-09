@@ -2,12 +2,33 @@ import bass
 import json
 import logging
 import time
+import tempfile
+import os
+import subprocess
+import shutil
 
 logging.getLogger().setLevel(logging.DEBUG)
 
 def process(job: dict):
     logging.info("processing: %s", job)
-    # Setup temporary workspace dir
+
+    tmpdir = tempfile.mkdtemp()
+
+    try:
+        # Setup temporary workspace dir
+        
+        # TBD: shall this create top level span, or leave that to orchestrator?
+        # TODO: Span for initial steps
+        os.chdir(tmpdir)
+        logging.info("Cloning repository '%s' to: '%s'", job["pipeline"]["repository"], tmpdir)
+        subprocess.call(["git", "clone", job["pipeline"]["repository"], "."])
+
+        # Execute job, will create sub spans
+    except Exception as e:
+        pass
+
+    shutil.rmtree(tmpdir)
+
     # clone repo (tbd: cache repo based on some pipeline/job-id?)
     # Checkout appropriate revision
     # Setup environment
@@ -33,9 +54,10 @@ def main(url, secret):
         try:
             job = check_for_job(url, secret)
             print(job)
-            process(job)
+            if job:
+                process(job)
         except Exception as e:
-            logging.error("Exception...", e)
+            logging.exception("Exception: %s", e)
 
         time.sleep(1)
 
