@@ -2,6 +2,7 @@
 import logging
 import http.server as server
 import json
+import os
 
 # The list of acceptable jobs for the orchestrator etc
 config = {}
@@ -74,12 +75,12 @@ class HTTPRequestHandler(server.SimpleHTTPRequestHandler):
     """
 
     def do_GET(self):
-        print("got GET")
+        logging.info("got GET")
         # server.SimpleHTTPRequestHandler.do_GET(self)
         # logging.warning(self.headers)
 
     def do_PUT(self):
-        print("got PUT")
+        logging.info("got PUT")
 
     def do_POST_webhook(self, params: dict) -> None:
         if "pipeline" not in params:
@@ -91,7 +92,8 @@ class HTTPRequestHandler(server.SimpleHTTPRequestHandler):
             return
 
         scheduleJob({
-            "env": {}, # Get from server/pipeline config?
+            "name": params["pipeline"],
+            "env": config["globalConfig"]["env"], # Get from server/pipeline config? Or provide only the env as requested by the job? (Later, will require the orch to know too much for now)
             "pipeline": config["pipelines"][params["pipeline"]]
         })
 
@@ -115,25 +117,28 @@ class HTTPRequestHandler(server.SimpleHTTPRequestHandler):
 
     def do_POST(self) -> None:
         """Save a file following a HTTP PUT request"""
-        print("got POST", self.path)
+        logging.info("got POST", self.path)
         (path, params) = parse_path(self.path)
 
         if path == "/dequeue":
             return self.do_POST_dequeue(params)
         elif path == "/webhook":
             return self.do_POST_webhook(params)
-
-
+        
     
 def validate_config(config: dict):
     return True
+
 
 if __name__ == '__main__':
     with(open("./orchestrator-config.json", "r") as f):
         tmp_config = json.load(f)
         if validate_config(tmp_config):
+            # Resolve env variables
+            tmp_config["globalConfig"]["env"] = { k : os.path.expandvars(v) for k, v in tmp_config["globalConfig"]["env"].items() }
+
             config = tmp_config
 
-        print("config", config)
+        # logging.debug("config", config)
 
     server.test(HandlerClass=HTTPRequestHandler, port=8080)

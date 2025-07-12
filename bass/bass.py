@@ -9,6 +9,7 @@ import re
 # from urllib.parse import urlparse
 
 type Severity = Literal["TRACE", "DEBUG", "INFO", "WARN", "ERROR", "FATAL"]
+# otel span status: 0: undefined, 1: ok, 2: error
 
 def generate_span(trace_id: str, parent_span_id: None|str, span_id: str, service: str, name: str, time_from: datetime.datetime, time_to: datetime.datetime, status: int):
     return {

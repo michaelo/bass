@@ -1,6 +1,13 @@
 {
     "globalConfig": {
-
+        "_1": "To be injected safely - e.g. via env?",
+        "env": {
+            "mysecret": "somevalue",
+            "fromenv": "$USER"
+        },
+        "allowedAgentSecrets": ["secret1", "secret2"],
+        "tracesEndpoint": "",
+        "logsEndpoint": ""
     },
     "pipelines": {
         "jobname": {
@@ -9,7 +16,9 @@
             "job-path": "job.py",
             "_2": "ref pattern only makes sense for webhook?",
             "ref-pattern": "main",
-            "msg-pattern": ".*"
+            "msg-pattern": ".*",
+            "_3": "List of tags an agent must provide to allow to pull jobs from this pipeline",
+            "required-capabilities": [""]
         },
         "jobname2": {
             "repository": "file:///tmp/mypipeline2",
