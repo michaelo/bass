@@ -52,7 +52,7 @@ def process(job: dict, args):
 
 
 def check_for_job(args):
-    (status, body) = bass.request("POST", args.dequeue_endpoint, None, headers={"X-API-KEY": args.dequeue_secret})
+    (status, body) = bass.request("POST", args.dequeue_endpoint, None, headers={"X-API-KEY": args.dequeue_api_key})
 
     if status == 200:
         return json.loads(body)
@@ -61,7 +61,10 @@ def check_for_job(args):
         logging.debug("No job")
     
     if status >= 400:
-        logging.error("Error checking for job")
+        logging.error(f"Error checking for job (server error: {status})")
+
+    if status == 0:
+        logging.error("Error checking for job (network error?)")
 
     return None
 
@@ -93,7 +96,7 @@ def worker_argparse():
         )
     
     parser.add_argument("-d", "--dequeue-endpoint", type=str, action="store", default="http://localhost:8080/dequeue", help="URL to bass orchestrator dequeue endpoint")
-    parser.add_argument("-s", "--dequeue-secret", type=str, action="store", default="", help="API-key to authenticate worker towards orchestrator")
+    parser.add_argument("-s", "--dequeue-api-key", type=str, action="store", default="", help="API-key to authenticate worker towards orchestrator")
     # parser.add_argument("-t", "--tags", type=str, action="store", default="", help="Comma-separated list of tags identifying this worker")
     parser.add_argument("-w", "--workspace-root", type=str, action="store", default=tempfile.gettempdir(), help="Root folder under which data required for pipeline processing will be stored")
     # --clean ? To nuke any temp-pipelines

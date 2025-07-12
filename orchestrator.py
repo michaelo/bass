@@ -3,24 +3,19 @@ import logging
 import http.server as server
 import json
 import os
+import argparse
+
+logging.getLogger().setLevel(logging.DEBUG)
 
 # The list of acceptable jobs for the orchestrator etc
-config = {}
+config = {
+    "pipelines": {},
+    "env": {},
+    "api-keys": {},
+}
 
 # The job queue to be processed
 job_queue = []
-
-# jobOrderTemplate = {
-#     "name": ""
-# }
-
-# Generate a request as if from bitbucket or somewhere
-def simulateWebhook():
-    pass
-
-# The entry point of orchestrator to handle an incoming job order - in case of push
-def onIncomingJob(job: dict):
-    scheduleJob(job)
 
 # Called periodically to check all registered jobs who require pull-checks
 # Att! Requires local state. Can be in-memory to begin with, but would need persistence at some point
@@ -28,13 +23,12 @@ def checkForPullChanges():
     # eventually scheduleJob(...)
     pass
 
-
 # Result of either onIncomingJob or checkForPullChanges to schedule a job to be done
 def scheduleJob(job: dict):
     job_queue.append(job)
 
 def parse_path(path_raw: str) -> tuple[str, dict[str:str]]:
-    """Tremendously naive path-path-of-URL-parser. Does e.g. not support multiple params with same key. URL-encoding? Schmurlencoding!"""
+    """Tremendously naive path-of-URL-parser. Does e.g. not support multiple params with same key. URL-encoding? Schmurlencoding!"""
     splits = path_raw.split("?", 1)
     base = ""
     query = None
@@ -63,26 +57,15 @@ def test_parse_path():
     assert ("path", {"key": "val"}) == parse_path("path?key=val")
     assert ("path", {"key": "val", "some": "else"}) == parse_path("path?key=val&some=else")
 
-
-
-agent_secret = "supersecret"
 class HTTPRequestHandler(server.SimpleHTTPRequestHandler):
-    """
-    SimpleHTTPServer with added bonus of:
-
-    - handle PUT requests
-    - log headers in GET request
-    """
-
     def do_GET(self):
         logging.info("got GET")
-        # server.SimpleHTTPRequestHandler.do_GET(self)
-        # logging.warning(self.headers)
 
     def do_PUT(self):
         logging.info("got PUT")
 
     def do_POST_webhook(self, params: dict) -> None:
+        # Parameter checks
         if "pipeline" not in params:
             self.send_error(400, "Invalid request")
             return
@@ -91,9 +74,11 @@ class HTTPRequestHandler(server.SimpleHTTPRequestHandler):
             self.send_error(404, "No such job")
             return
 
+        # Get it done!
+        # TODO: send trace id and root span id
         scheduleJob({
             "name": params["pipeline"],
-            "env": config["globalConfig"]["env"], # Get from server/pipeline config? Or provide only the env as requested by the job? (Later, will require the orch to know too much for now)
+            "env": config["env"],
             "pipeline": config["pipelines"][params["pipeline"]]
         })
 
@@ -102,7 +87,18 @@ class HTTPRequestHandler(server.SimpleHTTPRequestHandler):
         self.wfile.write(b"")
 
     def do_POST_dequeue(self, params: dict) -> None:
-        # Check for /webhook eller /dequeue
+        # If auth
+        if len(config["api-keys"].keys()) > 0:
+            api_key = self.headers.get("X-API-KEY", None)
+            if not api_key:
+                self.send_error(401, "Unauthenticated")
+                return
+            
+            if not config["api-keys"].get(api_key, False):
+                self.send_error(403, "Unauthorized")
+                return
+            
+        # Check for /webhook or /dequeue
         if len(job_queue) > 0:
             job = job_queue.pop(0)
             self.send_response(200)
@@ -117,7 +113,7 @@ class HTTPRequestHandler(server.SimpleHTTPRequestHandler):
 
     def do_POST(self) -> None:
         """Save a file following a HTTP PUT request"""
-        logging.info("got POST", self.path)
+        logging.info("got POST: %s", self.path)
         (path, params) = parse_path(self.path)
 
         if path == "/dequeue":
@@ -125,20 +121,51 @@ class HTTPRequestHandler(server.SimpleHTTPRequestHandler):
         elif path == "/webhook":
             return self.do_POST_webhook(params)
         
+def test_HTTPRequestHandler():
+    pass
+
+def orch_argparse():
+    parser = argparse.ArgumentParser(
+            prog = "bass orchestrator",
+            description = None,
+            epilog = None,
+            formatter_class=argparse.ArgumentDefaultsHelpFormatter
+        )
     
-def validate_config(config: dict):
-    return True
+    # TODO: otel config
+    # TBD: support pipeline-config from URL? And live reload/periodic sync?
+    parser.add_argument("-f", "--pipelines-file", type=str, action="store", default="orchestrator-pipelines.json", help="Local path to pipeline configurations")
+    parser.add_argument("-e", "--env-file", type=str, action="store", default="orchestrator.env", help="Local path to file containing variables definitions as key=value pairs. Supports $envvariable")
+    # TBD: listening address?
+    parser.add_argument("-p", "--port", type=int, action="store", default=8080, help="Port to listen for requests at")
+    # TBD: specify from file? At least store only hashes in memory
+    parser.add_argument("-a", "--api-keys", type=str, action="store", default="", help="Comma separated list of allowed API-keys")
+    
+    return parser.parse_args()
 
 
 if __name__ == '__main__':
-    with(open("./orchestrator-config.json", "r") as f):
-        tmp_config = json.load(f)
-        if validate_config(tmp_config):
-            # Resolve env variables
-            tmp_config["globalConfig"]["env"] = { k : os.path.expandvars(v) for k, v in tmp_config["globalConfig"]["env"].items() }
+    args = orch_argparse()
 
-            config = tmp_config
+    # Load configs
+    with(open(args.pipelines_file, "r") as f):
+        tmp_pipelines = json.load(f)
+        config["pipelines"] = tmp_pipelines
 
-        # logging.debug("config", config)
+    with(open(args.env_file, "r") as f):
+        tmp_env_raw = { k: os.path.expandvars(v) for (k,v) in [l.split("=") for l in f.readlines()]}
+        config["env"] = tmp_env_raw
 
-    server.test(HandlerClass=HTTPRequestHandler, port=8080)
+    # TODO: store only hashes
+    config["api-keys"] = {x: True for x in args.api_keys.split(",")}
+
+    # Inform of loaded configs
+    logging.info("Loaded pipelines:")
+    for x in config["pipelines"]:
+        logging.info(f" {x}")
+
+    logging.info("Loaded variables:")
+    for x in config["env"]:
+        logging.info(f" {x}")
+    
+    server.test(HandlerClass=HTTPRequestHandler, port=args.port)
