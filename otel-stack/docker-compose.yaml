@@ -4,18 +4,13 @@ services:
     image: grafana/otel-lgtm:0.11.5
     container_name: otel-lgtm
     ports:
-      - 3000:3000
-      - 4317:4317
-      - 4318:4318
-    # volumes:
-    #   - ${PWD}/Docker/prometheus.yml:/otel-lgtm/prometheus.yaml
-    #   - ${PWD}/Docker/grafana/provisioning:/otel-lgtm/grafana/conf/provisioning
+      - 3000:3000 # grafana
+      - 4317:4317 # otel grpc
+      - 4318:4318 # otel http
+      - 3200:3200 # tempo
+      - 3100:3100 # loki
     networks:
       otel:
-    # profiles:
-    #   - all
-    #   - otel-all
-    #   - otel-no-monitoring
 
 networks:
   otel:

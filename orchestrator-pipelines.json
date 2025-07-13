@@ -2,24 +2,25 @@
     "jobname": {
         "repository": "file:///tmp/mypipeline",
         "ref": "main",
-        "_1": "TBD: Specify branch here? Or leave to webhook? For pull: need to specify branch",
         "exec": [
             "python3", "job.py"
         ],
-        "_2": "ref pattern only makes sense for webhook?",
-        "ref-pattern": "main",
         "msg-pattern": ".*",
-        "_3": "List of tags an agent must provide to allow to pull jobs from this pipeline",
-        "worker-tags": [
-            ""
-        ]
+        "poll": null,
+        "x-webhook": {
+            "x-ref-pattern": "main"
+        }
     },
     "jobname2": {
         "repository": "file:///tmp/mypipeline2",
+        "ref": "main",
         "exec": [
             "python3", "job.py"
         ],
-        "ref-pattern": "feature/.*",
-        "msg-pattern": ".*"
+        "tag-pattern": "v[0-9]+",
+        "x-poll": {
+            "interval": "1h"
+        },
+        "webhook": null
     }
 }

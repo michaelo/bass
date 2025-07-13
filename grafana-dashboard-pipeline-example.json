@@ -89,7 +89,7 @@
           ],
           "limit": 20,
           "metricsQueryType": "range",
-          "query": "{ resource.service.name = \"pipeline:mypipeline\" } | select(span:name, span:status)",
+          "query": "{ resource.service.name = \"bass:pipeline:jobname\" } | select(span:name, span:status)",
           "queryType": "traceql",
           "refId": "A",
           "spss": 10,
@@ -188,7 +188,7 @@
           ],
           "limit": 20,
           "metricsQueryType": "range",
-          "query": "{ resource.service.name = \"pipeline:mypipeline\" } | select(trace:rootName, span:name, span:status)",
+          "query": "{ resource.service.name = \"bass:pipeline:jobname\" } | select(trace:rootName, span:name, span:status)",
           "queryType": "traceql",
           "refId": "A",
           "spss": 10,
@@ -223,6 +223,6 @@
   "timepicker": {},
   "timezone": "browser",
   "title": "Build log",
-  "uid": "b60e6f42-63ea-48a5-aa03-9c83b51a9347",
-  "version": 4
+  "uid": "3b249790-b705-4012-88f3-2e08cbb3adcb",
+  "version": 3
 }

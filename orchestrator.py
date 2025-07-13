@@ -65,6 +65,13 @@ def test_parse_path():
 class HTTPRequestHandler(server.SimpleHTTPRequestHandler):
     def do_GET(self):
         logging.info("got GET")
+        (path, _) = parse_path(self.path)
+        if path == "/pipelines":
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps(config["pipelines"]).encode("utf-8"))
+
 
     def do_PUT(self):
         logging.info("got PUT")
