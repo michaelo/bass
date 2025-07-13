@@ -6,7 +6,7 @@ import datetime
 import argparse
 import logging
 import re
-# from urllib.parse import urlparse
+import time
 
 type Severity = Literal["TRACE", "DEBUG", "INFO", "WARN", "ERROR", "FATAL"]
 # otel span status: 0: undefined, 1: ok, 2: error
@@ -169,9 +169,10 @@ def job_argparse(pipeline_name:str):
     # TBD: support single param comma-separated list as well?
     parser.add_argument("-s", "--service-name", type=str, action="store", default=f"pipeline:{pipeline_name}", help="Name to use for otel trace")
     parser.add_argument("-i", "--trace-id", type=str, action="store", default=generate_trace_id(), help="")
+    parser.add_argument("-d", "--root-span-id", type=str, action="store", default=generate_span_id(), help="")
     parser.add_argument("-g", "--generate-root-span", action="store_true", default=False, help="")
-    parser.add_argument("-t", "--trace-endpoint", type=str, action="store", default="http://localhost:4318/v1/traces", help="")
-    parser.add_argument("-l", "--log-endpoint", type=str, action="store", default="http://localhost:4318/v1/logs", help="")
+    parser.add_argument("-t", "--traces-endpoint", type=str, action="store", default="http://localhost:4318/v1/traces", help="")
+    parser.add_argument("-l", "--logs-endpoint", type=str, action="store", default="http://localhost:4318/v1/logs", help="")
     parser.add_argument("-f", "--force", action="store_true", default=False, help="Will force build all steps")
 
     parser.add_argument("-c", "--changeset", action="append", default=[], help="Modified path. Can be specified multiple times.")
@@ -197,32 +198,32 @@ def assert_pipeline(pipeline) -> bool:
         assert "exec" in step
         assert callable(step["exec"]) or type(step["exec"]) == str
 
-def create_span_sender(trace_endpoint: str, service_name: str, trace_id: str) -> Callable[[str, str, str, datetime.datetime, datetime.datetime, int], None]:
+def create_span_sender(traces_endpoint: str, service_name: str, trace_id: str) -> Callable[[str, str, str, datetime.datetime, datetime.datetime, int], None]:
     def span_sender(name: str, parent_span_id: None|str, span_id: str, time_from:datetime.datetime, time_to:datetime.datetime, status: int):
         span = generate_span(trace_id, parent_span_id, span_id, service_name, name, time_from, time_to, status)
-        (status, body) = request("POST", trace_endpoint, span, headers={"Content-Type": "application/json"})
+        (status, body) = request("POST", traces_endpoint, span, headers={"Content-Type": "application/json"})
         if status != 200:
             logging.error(f"Could not post span. Reason: {body}")
 
     return span_sender
 
-def create_log_sender(log_endpoint: str, service_name: str, trace_id: str) -> Callable[[str, Severity, str], None]:
+def create_log_sender(logs_endpoint: str, service_name: str, trace_id: str) -> Callable[[str, Severity, str], None]:
     def log_sender(span_id: str, severity: Severity, message: str):
         log = generate_log(trace_id, span_id, service_name, severity, message)
-        (status, body) = request("POST", log_endpoint, log, headers={"Content-Type": "application/json"})
+        (status, body) = request("POST", logs_endpoint, log, headers={"Content-Type": "application/json"})
         if status != 200:
             logging.error(f"Could not post log. Reason: {body}")
 
     return log_sender
 
-import time
+
 def build(pipeline):
     args = job_argparse(pipeline["name"])
     print(args)
 
-    spanner = create_span_sender(args.trace_endpoint, args.service_name, args.trace_id)
-    logger = create_log_sender(args.log_endpoint, args.service_name, args.trace_id)
-    root_span_id = generate_span_id()
+    spanner = create_span_sender(args.traces_endpoint, args.service_name, args.trace_id)
+    logger = create_log_sender(args.logs_endpoint, args.service_name, args.trace_id)
+    root_span_id = args.root_span_id
 
     root_start = utcnow()
 

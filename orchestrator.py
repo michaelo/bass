@@ -1,9 +1,10 @@
-#!/usr/env python3
+#!/usr/bin/env python3
 import logging
 import http.server as server
 import json
 import os
 import argparse
+import bass
 
 logging.getLogger().setLevel(logging.DEBUG)
 
@@ -12,6 +13,10 @@ config = {
     "pipelines": {},
     "env": {},
     "api-keys": {},
+    "otel": {
+        "traces-endpoint": "http://localhost:4318/v1/traces",
+        "logs-endpoint": "http://localhost:4318/v1/logs"
+    }
 }
 
 # The job queue to be processed
@@ -79,7 +84,12 @@ class HTTPRequestHandler(server.SimpleHTTPRequestHandler):
         scheduleJob({
             "name": params["pipeline"],
             "env": config["env"],
-            "pipeline": config["pipelines"][params["pipeline"]]
+            "pipeline": config["pipelines"][params["pipeline"]],
+            "otel": {**dict(config["otel"]), **{
+                "service-name": f"bass:pipeline:{params['pipeline']}",
+                "trace-id": bass.generate_trace_id(),
+                "root-span-id": bass.generate_span_id()
+            }}
         })
 
         self.send_response(200)
@@ -132,7 +142,8 @@ def orch_argparse():
             formatter_class=argparse.ArgumentDefaultsHelpFormatter
         )
     
-    # TODO: otel config
+    parser.add_argument("-t", "--traces-endpoint", type=str, action="store", default="http://localhost:4318/v1/traces", help="")
+    parser.add_argument("-l", "--logs-endpoint", type=str, action="store", default="http://localhost:4318/v1/logs", help="")
     # TBD: support pipeline-config from URL? And live reload/periodic sync?
     parser.add_argument("-f", "--pipelines-file", type=str, action="store", default="orchestrator-pipelines.json", help="Local path to pipeline configurations")
     parser.add_argument("-e", "--env-file", type=str, action="store", default="orchestrator.env", help="Local path to file containing variables definitions as key=value pairs. Supports $envvariable")

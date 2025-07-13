@@ -1,5 +1,4 @@
-from bass import bass
-    
+#!/usr/bin/env python3
 import json
 import logging
 import time
@@ -7,11 +6,14 @@ import tempfile
 import os
 import subprocess
 import argparse
+import bass
 
 logging.getLogger().setLevel(logging.DEBUG)
 
 def process(job: dict, args):
     logging.info("Processing: %s", job["name"])
+
+    # TODO: chdir back to origin cwd?
 
     # tmpdir = tempfile.mkdtemp(prefix="pipeline_", dir=args.workspace_root)
     tmpdir = f"{args.workspace_root}/pipeline_{job["name"]}"
@@ -28,18 +30,50 @@ def process(job: dict, args):
         os.chdir(tmpdir)
         
         if os.path.exists(f"{tmpdir}/.git"):
-            # Already cloned - update
             logging.info("Updating repository '%s' in: '%s'", job["pipeline"]["repository"], tmpdir)
             subprocess.call(["git","clean","-xdf"])
             subprocess.call(["git","pull"])
         else:
             logging.info("Cloning repository '%s' to: '%s'", job["pipeline"]["repository"], tmpdir)
-            # clone repo (tbd: cache repo based on some pipeline/job-id?)
             subprocess.call(["git", "clone", job["pipeline"]["repository"], "."])
 
-        # TODO: Checkout appropriate ref
+        logging.info(f"Checking out: {job["pipeline"]["ref"]}")
+        subprocess.call(["git", "checkout", job["pipeline"]["ref"], "."])
 
-        # Execute job, will create sub spans
+        # Print exact revision getting built
+        try:
+            ref = subprocess.check_output(["git", "show-ref"])
+            logging.info(f"git show-ref: {ref.decode()}")
+        except:
+            logging.warning("Could not call git show-ref")
+
+        # Execute job, will create sub spans - pass on trace and root span
+        try:
+            # Assume job accepts certain arguments
+            command = list(job["pipeline"]["exec"]) + [
+                "--service-name",
+                job["otel"]["service-name"],
+                "--trace-id",
+                job["otel"]["trace-id"],
+                "--root-span-id",
+                job["otel"]["root-span-id"],
+                "--traces-endpoint",
+                job["otel"]["traces-endpoint"],
+                "--logs-endpoint",
+                job["otel"]["logs-endpoint"],
+            ]
+
+            logging.info("Executing command: %s", command)
+            return_code = subprocess.call(command, env={**os.environ, **job["env"], **{"PYTHONPATH":"/Users/michael/dev/bass"}})
+
+            if return_code == 0:
+                logging.info("Build finished successfully")
+            else:
+                logging.error(f"Build finished with error code: {return_code}")
+        except Exception as e:
+            logging.error("Failure during build step")
+            logging.exception(e)
+
     except Exception as e:
         logging.error("Exception: ", e)
         pass

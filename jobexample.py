@@ -1,4 +1,5 @@
-# Envs available: TRACEPARENT
+#!/usr/bin/env python3
+# Envs available: TRACEPARENT?
 from bass import assert_pipeline, build
 
 # Important: Script must be directly runnable without the context of bass orch/worker
