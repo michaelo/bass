@@ -81,14 +81,26 @@ class HTTPRequestHandler(server.SimpleHTTPRequestHandler):
 
         # Get it done!
         # TODO: send trace id and root span id
+        # Create a preliminary root span which the worker will eventually update?
+        trace_id = bass.generate_trace_id()
+        root_span_id = bass.generate_span_id()
+        service_name = f"bass:pipeline:{params['pipeline']}"
+
+        root_span = bass.generate_span(trace_id, root_span_id, bass.generate_span_id(), service_name, "onSchedule", bass.utcnow(), bass.utcnow(), 1)
+        (code, msg) = bass.request("POST", config["otel"]["traces-endpoint"], root_span, {"Content-Type": "application/json"})
+        if code != 200:
+            logging.error(f"Could not post placeholder root span: {code}, {msg}")
+
+
         scheduleJob({
             "name": params["pipeline"],
+            "schedule-time": bass.utcnow().isoformat(),
             "env": config["env"],
             "pipeline": config["pipelines"][params["pipeline"]],
             "otel": {**dict(config["otel"]), **{
-                "service-name": f"bass:pipeline:{params['pipeline']}",
-                "trace-id": bass.generate_trace_id(),
-                "root-span-id": bass.generate_span_id()
+                "service-name": service_name,
+                "trace-id": trace_id,
+                "root-span-id": root_span_id
             }}
         })
 

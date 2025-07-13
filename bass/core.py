@@ -6,7 +6,7 @@ import datetime
 import argparse
 import logging
 import re
-import time
+import subprocess
 
 type Severity = Literal["TRACE", "DEBUG", "INFO", "WARN", "ERROR", "FATAL"]
 # otel span status: 0: undefined, 1: ok, 2: error
@@ -196,7 +196,7 @@ def assert_pipeline(pipeline) -> bool:
             assert re.compile(step["if-changeset-matches"])
 
         assert "exec" in step
-        assert callable(step["exec"]) or type(step["exec"]) == str
+        assert callable(step["exec"]) or type(step["exec"]) == list or type(step["exec"]) == str
 
 def create_span_sender(traces_endpoint: str, service_name: str, trace_id: str) -> Callable[[str, str, str, datetime.datetime, datetime.datetime, int], None]:
     def span_sender(name: str, parent_span_id: None|str, span_id: str, time_from:datetime.datetime, time_to:datetime.datetime, status: int):
@@ -217,6 +217,21 @@ def create_log_sender(logs_endpoint: str, service_name: str, trace_id: str) -> C
     return log_sender
 
 
+def exec_step(args, step):
+    """Returns tuple of (status, stdout, stderr). Status: result code"""
+    if not check_if_changeset_matches(args.changeset, step.get("if-changeset-matches", None)):
+        logging.info("skipping step")
+        return (0, f"Skpping step: {step["name"]}".encode("utf-8"), b"")
+    else:
+        if type(step["exec"]) == str:
+            result = subprocess.run([step["exec"]], capture_output=True)
+            return (result.returncode, result.stdout, result.stderr)
+        
+        if type(step["exec"]) == list:
+            result = subprocess.run(step["exec"], capture_output=True)
+            return (result.returncode, result.stdout, result.stderr)
+
+
 def build(pipeline):
     args = job_argparse(pipeline["name"])
     print(args)
@@ -227,26 +242,34 @@ def build(pipeline):
 
     root_start = utcnow()
 
+    exit_code = 0 # 0=ok
+
     for step in pipeline["steps"]:
         span_id = generate_span_id()
         step_start = utcnow()
-        
 
-        if not check_if_changeset_matches(args.changeset, step.get("if-changeset-matches", None)):
-            logging.info("skipping step")
-            logger(span_id, "INFO", f"Skipping step: {step['name']}")
-        else:
-            if type(step["exec"]) == str:
-                print("subprocess")
-                logger(span_id, "INFO", f"Executing suprocess")
-            elif callable(step["exec"]):
-                logger(span_id, "INFO", f"Executing function")
+        # TODO: establish how to handle stdout and stderr. Streaming or only at end? logging via logger?
+        try:
+            (step_status, step_stdout, step_stderr) = exec_step(args, step)
+        except Exception as e:
+            (step_status, step_stdout, step_stderr) = (-1, b"", str(e).encode("utf-8"))
 
-        time.sleep(0.5)
         step_end = utcnow()
-        spanner(f"step:{step['name']}", root_span_id, span_id, step_start, step_end, 1)
+        spanner(f"step:{step['name']}", root_span_id, span_id, step_start, step_end, 1 if step_status == 0 else 2)
+
+        # error? Any error?
+        if step_status != 0:
+            exit_code = 1
+
+        if len(step_stderr) > 0:
+            logger(span_id, "ERROR", step_stderr.decode())
+
+        if len(step_stdout) > 0:
+            logger(span_id, "INFO", step_stdout.decode())
 
     root_end = utcnow()
     if args.generate_root_span:
         # TODO: fix status in case of errors
         spanner(f"pipeline:{pipeline['name']}", None, root_span_id, root_start, root_end, 1)
+    
+    exit(exit_code)

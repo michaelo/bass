@@ -16,20 +16,16 @@ pipeline = {
     "steps": [
         {
             "name": "build",
-            "exec": "./build.sh"
-        },
-        {
-            "name": "some random",
-            "exec": lambda: print("function step")
+            "exec": ["./build.sh"]
         },
         {
             "if-changeset-matches": "random",
             "name": "test",
-            "exec": "./test.sh"
+            "exec": ["./test.sh"]
         },
         {
             "name": "publish",
-            "exec": "./publish.sh --key=$(apikey)"
+            "exec": ["./publish.sh", "--key", "$apikey"]
         }
     ]
 }

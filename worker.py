@@ -8,10 +8,11 @@ import subprocess
 import argparse
 import bass
 
-logging.getLogger().setLevel(logging.DEBUG)
+logging.getLogger().setLevel(logging.INFO)
 
 def process(job: dict, args):
     logging.info("Processing: %s", job["name"])
+    status = 0
 
     # TODO: chdir back to origin cwd?
 
@@ -68,15 +69,20 @@ def process(job: dict, args):
 
             if return_code == 0:
                 logging.info("Build finished successfully")
+                status = 1
             else:
                 logging.error(f"Build finished with error code: {return_code}")
+                status = 2
         except Exception as e:
             logging.error("Failure during build step")
             logging.exception(e)
+            status = 2
 
     except Exception as e:
         logging.error("Exception: ", e)
-        pass
+        status = 2
+
+    return status
 
     # shutil.rmtree(tmpdir)
 
@@ -115,7 +121,18 @@ def main(args):
                 time.sleep(1)
                 continue
 
-            process(job, args)
+            time_start = bass.utcnow()
+            status = process(job, args)
+            time_finished = bass.utcnow()
+
+            status_text = ["unknown", "ok", "error"]
+
+            # Update root span
+            updated_root_span = bass.generate_span(job["otel"]["trace-id"], None, job["otel"]["root-span-id"], job["otel"]["service-name"], f"Build: {job["name"]} - {status_text[status]}", time_start, time_finished, status)
+            (code, msg) = bass.request("POST", job["otel"]["traces-endpoint"], updated_root_span, {"Content-Type": "application/json"})
+            if code != 200:
+                logging.error(f"Could not post root span: {code}, {msg}")
+
         except Exception as e:
             logging.exception("Exception: %s", e)
             time.sleep(1)
