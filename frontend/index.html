@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="app">
+        <h1>Build overview</h1>
+
+        <nav>
+            <h2>Pipelines</h2>
+            <ul>
+                <li class="healthy"><a href="#1">Pipeline 1</a></li>
+                <li class="unhealthy"><a href="#1">Pipeline 2</a></li>
+            </ul>
+        </nav>
+        <section>
+            <h2>Pipeline 1</h2>
+            <div class="result">
+            <table class="result-matrix">
+                <thead>
+                    <tr>
+                        <th>Build / step</th>
+                        <th>Step 1</th>
+                        <th>Step 2</th>
+                        <th>Step 3</th>
+                        <th>Conclusion</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <th>
+                            <span class="title">build #002 <a href="#logs">L</a> | <a href="#traces">T</a></span>
+                            <span class="by-title">2025-07-12T13:37</span>
+                        </th>
+                        <td class="ok">13s</td>
+                        <td class="ok">2s</td>
+                        <td class="ok">3s</td>
+                        <th class="ok">Failed</th>
+                    </tr>
+                    <tr>
+                        <th>
+                            <span class="title">build #001 <a href="#logs">L</a> | <a href="#traces">T</a></span>
+                            <span class="by-title">2025-07-12T13:37</span>
+                        </th>
+                        <td class="ok">27s</td>
+                        <td class="error">2s</td>
+                        <td class="unknown">-</td>
+                        <th class="error">Failed</th>
+                    </tr>
+                </tbody>
+                <tfoot>
+
+                </tfoot>
+            </table>
+            </div>
+        </section>
+    </div>
+</body>
+</html>
