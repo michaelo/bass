@@ -11,6 +11,17 @@ services:
       - 3100:3100 # loki
     networks:
       otel:
+  # Due to lacking "Access-Control-Allow-Origin"-header from tempo API we'll spin up an nginx as proxy to add this
+  # Not overkill at all.
+  tempo-proxy:
+    image: nginx
+    container_name: tempo-proxy
+    ports:
+      - 3299:80
+    networks:
+      otel:
+    volumes:
+      - ./tempo-proxy-nginx.conf:/etc/nginx/nginx.conf
 
 networks:
   otel:
