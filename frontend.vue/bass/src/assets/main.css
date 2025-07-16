@@ -1,0 +1,62 @@
+* { margin: 0; padding: 0; font-size: 1em;}
+h1,h2,h3,h4,h5,h6 { font-weight: normal; }
+
+h2 { font-size: 1.5em; border-bottom: .05em solid; }
+
+body {
+    background: #1e2029;
+    color: #fffeea;
+    font-family: arial; 
+    margin: .5em;
+}
+
+a {
+    color: #d4d3c6;
+    cursor: pointer;
+}
+
+.app {
+    display: grid;
+    column-gap: .25em;
+    grid-template-columns: minmax(14em, 15%) minmax(calc(100vw - 24em), 85%);
+    grid-template-rows: 3em auto;
+}
+
+.app h1 {
+    grid-column: span 2;
+    font-size: 2em;
+}
+
+.result {
+    background: rgba(255,255,255,0.05);
+    border-radius: .5em;
+    padding: 1em;
+}
+
+table.result-matrix {
+    
+    border-spacing: .25em;
+    width: 100%;
+}
+table.result-matrix thead tr>:first-child {
+    width: 8em;
+}
+.result-matrix th { font-weight: bold; } 
+.result-matrix thead { 
+
+}
+.result-matrix thead th {} 
+.result-matrix tbody th {} 
+
+/* all cells */
+.result-matrix td, .result-matrix th { padding: .5em 1em; text-align: center; border-radius: .25em; } 
+
+th span { display: block; }
+th .title {
+
+}
+
+th .by-title { font-size: 0.825em; color: #bbbbbb; }
+
+td.ok, th.ok { background: #009d25; }
+td.error, th.error { background: #982525; }

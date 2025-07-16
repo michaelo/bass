@@ -1,4 +1,5 @@
 {
+  "compilerOptions": {"lib":["ES2024"]},
   "files": [],
   "references": [
     {
