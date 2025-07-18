@@ -63,11 +63,16 @@ def test_parse_path():
     assert ("path", {"key": "val", "some": "else"}) == parse_path("path?key=val&some=else")
 
 class HTTPRequestHandler(server.SimpleHTTPRequestHandler):
+
+    def add_CORS_headers(self):
+        self.send_header('Access-Control-Allow-Origin', '*')
+
     def do_GET(self):
         logging.info("got GET")
         (path, _) = parse_path(self.path)
         if path == "/pipelines":
             self.send_response(200)
+            self.add_CORS_headers()
             self.send_header('Content-Type', 'application/json')
             self.end_headers()
             self.wfile.write(json.dumps(config["pipelines"]).encode("utf-8"))
