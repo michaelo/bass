@@ -1,1 +1,1 @@
-from .core import assert_pipeline, build, generate_span_id, generate_trace_id, generate_span, generate_log, request, utcnow
+from .core import assert_pipeline, build, generate_span_id, generate_trace_id, generate_span, create_log_sender, generate_log, request, utcnow

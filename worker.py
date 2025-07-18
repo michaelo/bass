@@ -7,10 +7,12 @@ import os
 import subprocess
 import argparse
 import bass
+from bass import create_log_sender
 
 logging.getLogger().setLevel(logging.INFO)
 
 def process(job: dict, args):
+    logger = create_log_sender(job["otel"]["logs-endpoint"], job["otel"]["service-name"], job["otel"]["trace-id"])
     logging.info("Processing: %s", job["name"])
     status = 0
 
@@ -47,6 +49,7 @@ def process(job: dict, args):
             logging.info(f"git show-ref: {ref.decode()}")
         except:
             logging.warning("Could not call git show-ref")
+            logger(job["otel"]["root-span-id"], "WARN", "Could not call git show-ref")
 
         # Execute job, will create sub spans - pass on trace and root span
         try:
@@ -65,13 +68,23 @@ def process(job: dict, args):
             ]
 
             logging.info("Executing command: %s", command)
-            return_code = subprocess.call(command, env={**os.environ, **job["env"], **{"PYTHONPATH":"/Users/michael/dev/bass"}})
+            # return_code = subprocess.call(command, env={**os.environ, **job["env"], **{"PYTHONPATH":"/Users/michael/dev/bass"}})
+            result = subprocess.run(command, env={**os.environ, **job["env"], **{"PYTHONPATH":"/Users/michael/dev/bass"}}, capture_output=True)
 
-            if return_code == 0:
+            # TODO: Get response and log it!
+            if len(result.stderr) > 0:
+                logger(job["otel"]["root-span-id"], "ERROR", result.stderr.decode())
+
+            if len(result.stdout) > 0:
+                logger(job["otel"]["root-span-id"], "INFO", result.stdout.decode())
+
+            if result.returncode == 0:
                 logging.info("Build finished successfully")
+                logger(job["otel"]["root-span-id"], "INFO", "Build finished successfully")
                 status = 1
             else:
-                logging.error(f"Build finished with error code: {return_code}")
+                logging.error(f"Build finished with error code: {result.returncode}")
+                logger(job["otel"]["root-span-id"], "INFO", f"Build finished with error code: {result.returncode}")
                 status = 2
         except Exception as e:
             logging.error("Failure during build step")

@@ -209,6 +209,7 @@ def create_span_sender(traces_endpoint: str, service_name: str, trace_id: str) -
 
 def create_log_sender(logs_endpoint: str, service_name: str, trace_id: str) -> Callable[[str, Severity, str], None]:
     def log_sender(span_id: str, severity: Severity, message: str):
+        logging.debug(message)
         log = generate_log(trace_id, span_id, service_name, severity, message)
         (status, body) = request("POST", logs_endpoint, log, headers={"Content-Type": "application/json"})
         if status != 200:
