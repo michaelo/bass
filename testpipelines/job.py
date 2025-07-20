@@ -22,7 +22,7 @@ pipeline = {
         {
             # "if-changeset-matches": "random",
             "name": "test",
-            "exec": ["./test.sh"]
+            "exec": ["./random-fail.sh"]
         },
         {
             "name": "publish",
