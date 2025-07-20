@@ -2,6 +2,7 @@
 VAL=$(($RANDOM % 10))
 
 echo Got val: $VAL
+sleep $VAL
 
 if (($VAL > 5)); then
     echo Failed
