@@ -1,5 +1,13 @@
 <script setup lang="ts">
-const props = defineProps(["title", "pipelines", "currentPipeline", "pipelineInfo", "setPipeline"])
+import type { Config } from './api';
+
+const props = defineProps(["config", "title", "pipelines", "currentPipeline", "pipelineInfo", "setPipeline"])
+function traceUriFromId(config: Config, traceId: string){
+    return config.traceAnalyzeUrl.replace("{TRACEID}", traceId);
+};
+function logUriFromId(config: Config, traceId: string){
+    return config.logsAnalyzeUrl.replace("{TRACEID}", traceId);
+};
 </script>
 
 <template>
@@ -29,7 +37,9 @@ const props = defineProps(["title", "pipelines", "currentPipeline", "pipelineInf
               <tbody>
                   <tr v-for="build in pipelineInfo.value.builds">
                       <th>
-                          <span class="title">{{ new Date(build.timeStarted * 1000).toLocaleString() }} <a href="#logs">L</a> | <a href="#traces">T</a></span>
+                          <span class="title">
+                            {{ new Date(build.timeStarted * 1000).toLocaleString() }}
+                            <a :href="logUriFromId(config, build.traceId)">L</a> | <a :href="traceUriFromId(config, build.traceId)">T</a></span>
                           <span class="by-title">{{ build.durationSeconds }}s</span>
                       </th>
                       <!-- <td v-for="(step, stepName) in build.steps" :class="step.status">{{ step.durationSeconds }}s</td> -->

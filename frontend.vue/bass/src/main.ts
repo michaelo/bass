@@ -8,6 +8,8 @@ const config: Config = {
     pipelinesEndpoint: "http://localhost:8080/pipelines",
     tracesQueryEndpoint: "http://localhost:3299/api/search",
     logsQueryEndpoint: "http://127.0.0.1:3100/loki/api/v1/query",
+    logsAnalyzeUrl: "http://localhost:3000/explore?schemaVersion=1&panes=%7B%22t4g%22:%7B%22datasource%22:%22loki%22,%22queries%22:%5B%7B%22expr%22:%22%7Bservice_name%21%3D%5C%22%5C%22%7D%20%7C%20trace_id%20%3D%20%5C%22{TRACEID}%5C%22%22,%22refId%22:%22A%22,%22datasource%22:%7B%22type%22:%22loki%22,%22uid%22:%22loki%22%7D,%22editorMode%22:%22code%22,%22queryType%22:%22range%22,%22direction%22:%22backward%22%7D%5D,%22range%22:%7B%22from%22:%22now-7d%22,%22to%22:%22now%22%7D%7D%7D&orgId=1",
+    traceAnalyzeUrl: "http://localhost:3000/explore?schemaVersion=1&panes=%7B%22zxa%22:%7B%22datasource%22:%22tempo%22,%22queries%22:%5B%7B%22refId%22:%22A%22,%22datasource%22:%7B%22type%22:%22tempo%22,%22uid%22:%22tempo%22%7D,%22queryType%22:%22traceql%22,%22limit%22:20,%22tableType%22:%22traces%22,%22metricsQueryType%22:%22range%22,%22query%22:%22{TRACEID}%22,%22filters%22:%5B%7B%22id%22:%22608ab610%22,%22operator%22:%22%3D%22,%22scope%22:%22span%22%7D%5D%7D%5D,%22range%22:%7B%22from%22:%22now-30d%22,%22to%22:%22now%22%7D%7D%7D&orgId=1"
 };
 
 const pipelines = await getPipelines(config);
@@ -55,7 +57,8 @@ async function getBuildsForPipeline(config: Config, name: string) : Promise<Pipe
     // const query = `${config.tracesQueryEndpoint}?q={rootServiceName=%22${serviceName}%22}|select(span:status,span:name,span:parentID)&spss=10`;
     const query = `${config.tracesQueryEndpoint}?` + new URLSearchParams({
         q: `{rootServiceName="${serviceName}"}|select(span:status,span:name,span:parentID)`,
-        spss: "10",
+        spss: "100",
+        limit: "100",
         start: String(nowUnix - 3600*72),
         end: String(nowUnix)
     });
@@ -67,7 +70,7 @@ async function getBuildsForPipeline(config: Config, name: string) : Promise<Pipe
             allStepNames: [],
             builds: [],
             spec: {
-                name: name
+                name
             }
         };
     }
@@ -76,7 +79,7 @@ async function getBuildsForPipeline(config: Config, name: string) : Promise<Pipe
         allStepNames: [],
         builds: [],
         spec: {
-            name: name
+            name
         }
     };
 
@@ -155,6 +158,7 @@ const pipelineInfo: Ref<null | PipelineInfo> = ref(null);
 //     } as PipelineInfo
 
 createApp(App, {
+    config,
     pipelines,
     currentPipeline,
     title,

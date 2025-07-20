@@ -2,6 +2,8 @@ export type Config = {
     pipelinesEndpoint: string;
     tracesQueryEndpoint: string;
     logsQueryEndpoint: string;
+    logsAnalyzeUrl: string;
+    traceAnalyzeUrl: string;
 }
 
 export type Pipeline = {
@@ -51,22 +53,3 @@ function getSpansForTrace(traceId: TraceID): Span[] {
 function getLogsForTrace(): Log[] {
     return [];
 }
-
-// async function init(root: HTMLElement, config: Config): Promise<void> {
-//     const pipelinesReq = await request("GET", config.pipelinesEndpoint);
-//     console.log(pipelinesReq)
-//     let ul = document.createElement("ul");
-
-//     for(const p in Object.getOwnPropertyNames(pipelinesReq.body)) {
-//         let tmpLi = document.createElement("li");
-//         tmpLi.innerText = p;
-//         ul.appendChild(tmpLi)
-//     }
-//     root.appendChild(ul);
-// }
-
-// init(document.querySelector("#root") ?? document.body, {
-//     pipelinesEndpoint: "http://localhost:8080/pipelines",
-//     tracesQueryEndpoint: "http://localhost:3200/api/search",
-//     logsQueryEndpoint: "http://127.0.0.1:3100/loki/api/v1/query",
-// })
