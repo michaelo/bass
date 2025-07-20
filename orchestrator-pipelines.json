@@ -22,5 +22,18 @@
             "interval": "1h"
         },
         "webhook": null
+    },
+    "bass-example1": {
+        "repository": "git@github.com:michaelo/bass.git",
+        "ref": "main",
+        "cwd": "./testpipelines",
+        "exec": [
+            "python3", "job.py"
+        ],
+        "msg-pattern": ".*",
+        "poll": null,
+        "x-webhook": {
+            "x-ref-pattern": "main"
+        }
     }
 }

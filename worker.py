@@ -43,6 +43,9 @@ def process(job: dict, args):
         logging.info(f"Checking out: {job["pipeline"]["ref"]}")
         subprocess.call(["git", "checkout", job["pipeline"]["ref"], "."])
 
+        if "cwd" in job["pipeline"]:
+            os.chdir(job["pipeline"]["cwd"])
+
         # Print exact revision getting built
         try:
             ref = subprocess.check_output(["git", "show-ref"])
