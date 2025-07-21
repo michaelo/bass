@@ -12,8 +12,7 @@ logging.getLogger().setLevel(logging.DEBUG)
 # Each "step" can e.g. either be a step or a stepSet
 pipeline = {
     "name": "mypipeline",
-    # "preSteps": [],
-    # "postSteps": [],
+    # "timeout": 240, # TBD: support timeout on the entire process?
     "steps": [
         {
             "name": "build",
@@ -22,6 +21,7 @@ pipeline = {
         {
             # "if-changeset-matches": "random",
             "name": "test",
+            "timeout": 8,
             "exec": ["./random-fail.sh"]
         },
         {

@@ -8,13 +8,14 @@ import subprocess
 import argparse
 import bass
 from bass import create_log_sender
+from bass.core import ExecStatus, exec_status_to_otel
 
 logging.getLogger().setLevel(logging.INFO)
 
-def process(job: dict, args):
+def process(job: dict, args) -> ExecStatus:
     logger = create_log_sender(job["otel"]["logs-endpoint"], job["otel"]["service-name"], job["otel"]["trace-id"])
     logging.info("Processing: %s", job["name"])
-    status = 0
+    status = ExecStatus.UNKNOWN
 
     # TODO: chdir back to origin cwd?
 
@@ -71,32 +72,31 @@ def process(job: dict, args):
             ]
 
             logging.info("Executing command: %s", command)
-            # return_code = subprocess.call(command, env={**os.environ, **job["env"], **{"PYTHONPATH":"/Users/michael/dev/bass"}})
-            result = subprocess.run(command, env={**os.environ, **job["env"], **{"PYTHONPATH":"/Users/michael/dev/bass"}}, capture_output=True)
+            result = subprocess.run(command, env={**os.environ, **job["env"], **{"PYTHONPATH":os.environ.get("PYTHONPATH", "")}}, capture_output=True)
 
-            # TODO: Get response and log it!
+            # Get response and log it!
             if len(result.stderr) > 0:
                 logger(job["otel"]["root-span-id"], "ERROR", result.stderr.decode())
 
             if len(result.stdout) > 0:
                 logger(job["otel"]["root-span-id"], "INFO", result.stdout.decode())
 
-            if result.returncode == 0:
+            if result.returncode == ExecStatus.OK:
                 logging.info("Build finished successfully")
                 logger(job["otel"]["root-span-id"], "INFO", "Build finished successfully")
-                status = 1
+                status = ExecStatus.OK
             else:
                 logging.error(f"Build finished with error code: {result.returncode}")
                 logger(job["otel"]["root-span-id"], "INFO", f"Build finished with error code: {result.returncode}")
-                status = 2
+                status = ExecStatus.ERROR
         except Exception as e:
             logging.error("Failure during build step")
             logging.exception(e)
-            status = 2
+            status = ExecStatus.ERROR
 
     except Exception as e:
         logging.error("Exception: ", e)
-        status = 2
+        status = ExecStatus.ERROR
 
     return status
 
@@ -141,10 +141,10 @@ def main(args):
             status = process(job, args)
             time_finished = bass.utcnow()
 
-            status_text = ["unknown", "ok", "error"]
+            otel_status = exec_status_to_otel[status.value]
 
             # Update root span
-            updated_root_span = bass.generate_span(job["otel"]["trace-id"], None, job["otel"]["root-span-id"], job["otel"]["service-name"], f"Build: {job["name"]} - {status_text[status]}", time_start, time_finished, status)
+            updated_root_span = bass.generate_span(job["otel"]["trace-id"], None, job["otel"]["root-span-id"], job["otel"]["service-name"], f"Build: {job["name"]} - {status.name}", time_start, time_finished, otel_status)
             (code, msg) = bass.request("POST", job["otel"]["traces-endpoint"], updated_root_span, {"Content-Type": "application/json"})
             if code != 200:
                 logging.error(f"Could not post root span: {code}, {msg}")

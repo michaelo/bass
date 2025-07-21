@@ -1,3 +1,4 @@
+from enum import Enum
 from urllib import request as urq, error
 from typing import Literal, Callable
 import json
@@ -180,23 +181,27 @@ def job_argparse(pipeline_name:str):
     return parser.parse_args()
 
 
-# TBD: rename to "assert_pipeline" and return nothing?
-def assert_pipeline(pipeline) -> bool:
+def assert_pipeline(node) -> bool:
     """Asserts that a pipeline is properly setup"""
     # Perform necessary ducktyping on pipeline-object to verify it's structure
     # TBD if it always shall be called, or if it's opt-in to do while developing pipeline
-    assert "name" in pipeline and type(pipeline["name"]) == str
-    assert "steps" in pipeline and type(pipeline["steps"]) == list
+    assert "name" in node and type(node["name"]) == str
+    assert "steps" in node or "exec" in node
 
-    assert len(pipeline["steps"]) > 0
+    if "if-changeset-matches" in node:
+        assert re.compile(step["if-changeset-matches"])    
 
-    for step in pipeline["steps"]:
-        assert "name" in step and type(step["name"]) == str
-        if "if-changeset-matches" in step:
-            assert re.compile(step["if-changeset-matches"])
+    if "exec" in node:
+        assert type(node["exec"]) == list or type(node["exec"]) == str
 
-        assert "exec" in step
-        assert callable(step["exec"]) or type(step["exec"]) == list or type(step["exec"]) == str
+    if "steps" in node:
+        assert type(node["steps"]) == list
+        assert len(node["steps"]) > 0
+
+        for step in node["steps"]:
+            assert_pipeline(step)
+
+            # assert callable(step["exec"]) or type(step["exec"]) == list or type(step["exec"]) == str
 
 def create_span_sender(traces_endpoint: str, service_name: str, trace_id: str) -> Callable[[str, str, str, datetime.datetime, datetime.datetime, int], None]:
     def span_sender(name: str, parent_span_id: None|str, span_id: str, time_from:datetime.datetime, time_to:datetime.datetime, status: int):
@@ -217,20 +222,42 @@ def create_log_sender(logs_endpoint: str, service_name: str, trace_id: str) -> C
 
     return log_sender
 
+class ExecStatus(Enum):
+    OK = 0
+    UNKNOWN = 1
+    TIMEOUT = 2
+    ERROR = 3
 
-def exec_step(args, step):
+exec_status_to_otel = {
+    0: 1, # OK
+    1: 0, # unknown
+    2: 2, # ERRPR
+    3: 2 # ERROR
+}
+
+
+def exec_step(args, step) -> tuple[ExecStatus, str, str]:
     """Returns tuple of (status, stdout, stderr). Status: result code"""
     if not check_if_changeset_matches(args.changeset, step.get("if-changeset-matches", None)):
-        logging.info("skipping step")
-        return (0, f"Skpping step: {step["name"]}".encode("utf-8"), b"")
+        return (ExecStatus.OK, f"Skpping step: {step["name"]}", "")
     else:
-        if type(step["exec"]) == str:
-            result = subprocess.run([step["exec"]], capture_output=True)
-            return (result.returncode, result.stdout, result.stderr)
-        
-        if type(step["exec"]) == list:
-            result = subprocess.run(step["exec"], capture_output=True)
-            return (result.returncode, result.stdout, result.stderr)
+        timeout = step["timeout"] if "timeout" in step else None
+        try:
+            cmd = None
+            if type(step["exec"]) == str:
+                cmd = [step["exec"]]
+
+            if type(step["exec"]) == list:
+                cmd = step["exec"]
+            
+            if not cmd:
+                logging.error(f"Unknown command type: {type(exec["step"])}")
+                return (ExecStatus.UNKNOWN, "", f"Unknown command type: {type(exec["step"])}")
+            
+            result = subprocess.run(cmd, capture_output=True, timeout=timeout)
+            return (ExecStatus.OK if result.returncode == 0 else ExecStatus.ERROR, result.stdout.decode(), result.stderr.decode())
+        except subprocess.TimeoutExpired as e:
+            return (ExecStatus.TIMEOUT, e.output, str(e))
 
 
 def build(pipeline):
@@ -243,7 +270,7 @@ def build(pipeline):
 
     root_start = utcnow()
 
-    exit_code = 0 # 0=ok
+    exit_code = ExecStatus.OK # 0=ok
 
     for step in pipeline["steps"]:
         span_id = generate_span_id()
@@ -253,24 +280,25 @@ def build(pipeline):
         try:
             (step_status, step_stdout, step_stderr) = exec_step(args, step)
         except Exception as e:
-            (step_status, step_stdout, step_stderr) = (-1, b"", str(e).encode("utf-8"))
+            (step_status, step_stdout, step_stderr) = (ExecStatus.ERROR, "", str(e))
 
         step_end = utcnow()
-        spanner(f"step:{step['name']}", root_span_id, span_id, step_start, step_end, 1 if step_status == 0 else 2)
+        spanner(f"step:{step['name']}", root_span_id, span_id, step_start, step_end, 1 if step_status == ExecStatus.OK else 2)
 
         # error? Any error?
-        if step_status != 0:
-            exit_code = 1
+        if step_status.value > exit_code.value:
+            exit_code = step_status
 
         if len(step_stderr) > 0:
-            logger(span_id, "ERROR", step_stderr.decode())
+            logger(span_id, "ERROR", step_stderr)
 
         if len(step_stdout) > 0:
-            logger(span_id, "INFO", step_stdout.decode())
+            logger(span_id, "INFO", step_stdout)
 
     root_end = utcnow()
     if args.generate_root_span:
         # TODO: fix status in case of errors
         spanner(f"pipeline:{pipeline['name']}", None, root_span_id, root_start, root_end, 1)
     
-    exit(exit_code)
+    logging.info(f"Execution concluded with status: {exit_code} / {exit_code.value}")
+    exit(exit_code.value)

@@ -2,10 +2,12 @@
 import type { Config } from './api';
 
 const props = defineProps(["config", "title", "pipelines", "currentPipeline", "pipelineInfo", "setPipeline"])
-function traceUriFromId(config: Config, traceId: string){
+function traceUriFromId(config: Config, traceId: string) {
+    traceId = traceId.padStart(32, "0");
     return config.traceAnalyzeUrl.replace("{TRACEID}", traceId);
 };
-function logUriFromId(config: Config, traceId: string){
+function logUriFromId(config: Config, traceId: string) {
+    traceId = traceId.padStart(32, "0");
     return config.logsAnalyzeUrl.replace("{TRACEID}", traceId);
 };
 </script>
