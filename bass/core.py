@@ -8,6 +8,7 @@ import argparse
 import logging
 import re
 import subprocess
+from concurrent.futures import ThreadPoolExecutor
 
 type Severity = Literal["TRACE", "DEBUG", "INFO", "WARN", "ERROR", "FATAL"]
 # otel span status: 0: undefined, 1: ok, 2: error
@@ -187,6 +188,7 @@ def assert_pipeline(node) -> bool:
     # TBD if it always shall be called, or if it's opt-in to do while developing pipeline
     assert "name" in node and type(node["name"]) == str
     assert "steps" in node or "exec" in node
+    assert not ("steps" in node and "exec" in node)
 
     if "if-changeset-matches" in node:
         assert re.compile(step["if-changeset-matches"])    
@@ -236,9 +238,9 @@ exec_status_to_otel = {
 }
 
 
-def exec_step(args, step) -> tuple[ExecStatus, str, str]:
+def exec_step(step, changeset) -> tuple[ExecStatus, str, str]:
     """Returns tuple of (status, stdout, stderr). Status: result code"""
-    if not check_if_changeset_matches(args.changeset, step.get("if-changeset-matches", None)):
+    if not check_if_changeset_matches(changeset, step.get("if-changeset-matches", None)):
         return (ExecStatus.OK, f"Skpping step: {step["name"]}", "")
     else:
         timeout = step["timeout"] if "timeout" in step else None
@@ -260,6 +262,56 @@ def exec_step(args, step) -> tuple[ExecStatus, str, str]:
             return (ExecStatus.TIMEOUT, e.output, str(e))
 
 
+def build_inner(args, node, parent_span_id, changeset) -> ExecStatus:
+    # Check node: if exec: execute directly. If steps: recurse.
+        # Always establish span for sub-nodes
+    # Errors need to propagate
+    step_start = utcnow()
+    span_id = generate_span_id()
+    result = ExecStatus.OK
+    
+    spanner = create_span_sender(args.traces_endpoint, args.service_name, args.trace_id)
+    logger = create_log_sender(args.logs_endpoint, args.service_name, args.trace_id)
+    
+    if "exec" in node:
+        try:
+            (step_status, step_stdout, step_stderr) = exec_step(node, changeset)
+        except Exception as e:
+            (step_status, step_stdout, step_stderr) = (ExecStatus.ERROR, "", str(e))
+
+        if step_status.value > result.value:
+            result = step_status
+
+        if len(step_stderr) > 0:
+            logger(span_id, "ERROR", step_stderr)
+
+        if len(step_stdout) > 0:
+            logger(span_id, "INFO", step_stdout)
+    elif "steps" in node:
+        if "order" in node and node["order"] == "unordered":
+            
+            with ThreadPoolExecutor(max_workers=5) as executor:
+                futures = []    
+                for step in node["steps"]:
+                    futures.append(executor.submit(build_inner, args, step, span_id, changeset))
+
+                for f in futures:
+                    step_result = f.result()
+                    if step_result.value > result.value:
+                        result = step_result
+        else:
+            for step in node["steps"]:
+                step_result = build_inner(args, step, span_id, changeset)
+                if step_result.value > result.value:
+                    result = step_result
+
+    step_end = utcnow()
+
+    # Send span
+    spanner(f"step:{node['name']}", parent_span_id, span_id, step_start, step_end, 1 if result == ExecStatus.OK else 2)
+
+    return result
+
 def build(pipeline):
     args = job_argparse(pipeline["name"])
     print(args)
@@ -269,33 +321,9 @@ def build(pipeline):
     root_span_id = args.root_span_id
 
     root_start = utcnow()
-
-    exit_code = ExecStatus.OK # 0=ok
-
-    for step in pipeline["steps"]:
-        span_id = generate_span_id()
-        step_start = utcnow()
-
-        # TODO: establish how to handle stdout and stderr. Streaming or only at end? logging via logger?
-        try:
-            (step_status, step_stdout, step_stderr) = exec_step(args, step)
-        except Exception as e:
-            (step_status, step_stdout, step_stderr) = (ExecStatus.ERROR, "", str(e))
-
-        step_end = utcnow()
-        spanner(f"step:{step['name']}", root_span_id, span_id, step_start, step_end, 1 if step_status == ExecStatus.OK else 2)
-
-        # error? Any error?
-        if step_status.value > exit_code.value:
-            exit_code = step_status
-
-        if len(step_stderr) > 0:
-            logger(span_id, "ERROR", step_stderr)
-
-        if len(step_stdout) > 0:
-            logger(span_id, "INFO", step_stdout)
-
+    exit_code = build_inner(args, pipeline, root_span_id, args.changeset)
     root_end = utcnow()
+    
     if args.generate_root_span:
         # TODO: fix status in case of errors
         spanner(f"pipeline:{pipeline['name']}", None, root_span_id, root_start, root_end, 1)
