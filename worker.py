@@ -81,7 +81,7 @@ def process(job: dict, args) -> ExecStatus:
             if len(result.stdout) > 0:
                 logger(job["otel"]["root-span-id"], "INFO", result.stdout.decode())
 
-            if result.returncode == ExecStatus.OK:
+            if result.returncode == ExecStatus.OK.value:
                 logging.info("Build finished successfully")
                 logger(job["otel"]["root-span-id"], "INFO", "Build finished successfully")
                 status = ExecStatus.OK
