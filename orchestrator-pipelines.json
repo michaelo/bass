@@ -35,5 +35,21 @@
         "x-webhook": {
             "x-ref-pattern": "main"
         }
+    },
+    "bass-example-complex": {
+        "repository": "git@github.com:michaelo/bass.git",
+        "ref": "main",
+        "cwd": "./testpipelines",
+        "exec": [
+            "python3", "job-complex.py"
+        ]
+    },
+    "bass-example-simple": {
+        "repository": "git@github.com:michaelo/bass.git",
+        "ref": "main",
+        "cwd": "./testpipelines",
+        "exec": [
+            "python3", "job-simple.py"
+        ]
     }
 }

@@ -31,22 +31,34 @@ a {
     background: rgba(255,255,255,0.05);
     border-radius: .5em;
     padding: 1em;
+    overflow: auto;
 }
 
 table.result-matrix {
     
     border-spacing: .25em;
     width: 100%;
+
 }
 table.result-matrix thead tr>:first-child {
     width: 8em;
 }
 .result-matrix th { font-weight: bold; } 
-.result-matrix thead { 
+.result-matrix thead {  }
+.result-matrix thead th { background: #2f3240; } 
+.result-matrix tbody th { background: #2f3240; } 
 
+th[scope=row] {
+  position: sticky;
+  left: 0;
+  z-index: 1;
 }
-.result-matrix thead th {} 
-.result-matrix tbody th {} 
+
+th:not([scope=row]) {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
 
 /* all cells */
 .result-matrix td, .result-matrix th { padding: .5em 1em; text-align: center; border-radius: .25em; } 

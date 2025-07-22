@@ -12,8 +12,11 @@ const config: Config = {
     traceAnalyzeUrl: "http://localhost:3000/explore?schemaVersion=1&panes=%7B%22zxa%22:%7B%22datasource%22:%22tempo%22,%22queries%22:%5B%7B%22refId%22:%22A%22,%22datasource%22:%7B%22type%22:%22tempo%22,%22uid%22:%22tempo%22%7D,%22queryType%22:%22traceql%22,%22limit%22:20,%22tableType%22:%22traces%22,%22metricsQueryType%22:%22range%22,%22query%22:%22{TRACEID}%22,%22filters%22:%5B%7B%22id%22:%22608ab610%22,%22operator%22:%22%3D%22,%22scope%22:%22span%22%7D%5D%7D%5D,%22range%22:%7B%22from%22:%22now-30d%22,%22to%22:%22now%22%7D%7D%7D&orgId=1"
 };
 
+const searchParams = new URLSearchParams(window.location.search);
+
 const pipelines = await getPipelines(config);
 const currentPipeline: Ref<null|Pipeline> = ref(null);
+const pipelineInfo: Ref<null | PipelineInfo> = ref(null);
 const title = ref("Select pipeline");
 
 type Step = {
@@ -38,16 +41,7 @@ type PipelineInfo = {
     spec: Pipeline;
 }
 
-const pipelineBuilds = ref([])
-
-type TempoTraceResponse = {
-    traces: {
-        traceID: string;
-    }[];
-}
-
-const zeroSpan = "0000000000000000"
-
+const zeroSpan = "0000000000000000";
 
 async function getBuildsForPipeline(config: Config, name: string) : Promise<PipelineInfo> {
     // http://localhost:3200/api/search?q={rootServiceName=%22bass:pipeline:jobname%22}&spss=10
@@ -102,7 +96,7 @@ async function getBuildsForPipeline(config: Config, name: string) : Promise<Pipe
                 continue;
             }
 
-            if(!stepNames[span.name]) {
+            if (!stepNames[span.name] || span.startTimeUnixNano < stepNames[span.name]) {
                 stepNames[span.name] = span.startTimeUnixNano;
             }
             
@@ -116,60 +110,34 @@ async function getBuildsForPipeline(config: Config, name: string) : Promise<Pipe
         result.builds.push(build);
     }
 
-    result.allStepNames = Object.getOwnPropertyNames(stepNames).map(el => [stepNames[el], el]).toSorted((a, b) => a[0] > b[0]).map(el => el[1]);
+    result.allStepNames = Object.getOwnPropertyNames(stepNames)
+        .map(el => [stepNames[el], el])
+        .toSorted((a, b) => a[0] > b[0])
+        .map(el => el[1]);
 
     return result;
 }
 
-const pipelineInfo: Ref<null | PipelineInfo> = ref(null);
+function setPipeline(name: string) {
+    window.history.pushState(null, null, "?pipeline=" + name);
+    title.value = name;
+    currentPipeline.value = pipelines[name];
 
+    // TODO: get build/trace data
+    getBuildsForPipeline(config, name).then(result => {
+        pipelineInfo.value = result;
+    });
+}
 
-// {
-//         "spec": currentPipeline.value,
-//         // TODO: be created from all the steps of all builds
-//         "allStepNames": ["step1", "step2", "step3"],
-//         "builds": [
-//             {name: "#001", traceId: "123123123", timeStarted: 0, durationSeconds: 10, status: "ok", steps: {
-//                 "step1": {
-//                     "timeStarted": 0,
-//                     "durationSeconds": 3,
-//                     status: "ok"
-//                 },
-//                 "step2": {
-//                     "timeStarted": 1,
-//                     "durationSeconds": 6,
-//                     status: "ok"
-//                 }
-//             }},
-
-//             {name: "#002", traceId: "123123121", timeStarted: 2, durationSeconds: 8, status: "error", steps: {
-//                 "step1": {
-//                     "timeStarted": 0,
-//                     "durationSeconds": 3,
-//                     status: "ok"
-//                 },
-//                 "step3": {
-//                     "timeStarted": 3,
-//                     "durationSeconds": 6,
-//                     status: "error"
-//                 }
-//             }}
-//         ]
-//     } as PipelineInfo
+const pipeline = searchParams.get("pipeline");
+if(pipeline) {
+    setPipeline(pipeline);
+}
 
 createApp(App, {
     config,
     pipelines,
-    currentPipeline,
     title,
-    setPipeline: (name: string) => {
-        title.value = name;
-        currentPipeline.value = pipelines[name];
-
-        // TODO: get build/trace data
-        getBuildsForPipeline(config, name).then(result => {
-            pipelineInfo.value = result;
-        });
-    },
+    setPipeline,
     pipelineInfo
-}).mount('#app')
+}).mount('#app');

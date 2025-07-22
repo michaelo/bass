@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { Config } from './api';
 
-const props = defineProps(["config", "title", "pipelines", "currentPipeline", "pipelineInfo", "setPipeline"])
+const props = defineProps(["config", "title", "pipelines", "pipelineInfo", "setPipeline"])
 function traceUriFromId(config: Config, traceId: string) {
     traceId = traceId.padStart(32, "0");
     return config.traceAnalyzeUrl.replace("{TRACEID}", traceId);
@@ -25,7 +25,7 @@ function logUriFromId(config: Config, traceId: string) {
           </ul>
       </nav>
       <section>
-        <div v-if="currentPipeline.value != null && pipelineInfo.value != null">
+        <div v-if="pipelineInfo.value != null">
           <h2>{{ title.value }}</h2>
           <div class="result">
           <table class="result-matrix">
@@ -38,18 +38,17 @@ function logUriFromId(config: Config, traceId: string) {
               </thead>
               <tbody>
                   <tr v-for="build in pipelineInfo.value.builds">
-                      <th>
+                      <th scope="row">
                           <span class="title">
                             {{ new Date(build.timeStarted * 1000).toLocaleString() }}
                             <a :href="logUriFromId(config, build.traceId)">L</a> | <a :href="traceUriFromId(config, build.traceId)">T</a></span>
                           <span class="by-title">{{ build.durationSeconds }}s</span>
                       </th>
-                      <!-- <td v-for="(step, stepName) in build.steps" :class="step.status">{{ step.durationSeconds }}s</td> -->
                       <template v-for="step in pipelineInfo.value.allStepNames">
                         <td v-if="step in build.steps" :class="build.steps[step].status">{{ build.steps[step].durationSeconds }}s</td>
                         <td v-else> - </td>
                       </template>
-                      <th :class="build.status">{{ build.status == "ok" ? "Success" : "Failed" }}</th>
+                      <td :class="build.status">{{ build.status == "ok" ? "Success" : "Failed" }}</td>
                   </tr>
               </tbody>
               <tfoot>

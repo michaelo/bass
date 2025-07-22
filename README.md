@@ -1,6 +1,37 @@
 A quite simple build assistant
 ===
 
+Getting started
+---
+
+Starting the orchestrator:
+
+    python3 orchestrator.py --api-keys key1,key2
+
+    or (for hacky reload):
+
+    watchexec -r "python3 orchestrator.py --api-keys key1,key2"
+
+Starting a worker:
+
+    PYTHONPATH=/path/to/local/repo python3 worker.py --dequeue-api-key key1
+
+    or (for hacky reload):
+
+    watchexec -r "PYTHONPATH=/path/to/local/repo python3 worker.py --dequeue-api-key key1"
+
+PYTHONPATH enables the worker (and jobs exectued by the worker) to locate the 'bass' python module.
+
+In case of multiple workes on same host, ensure independent workspace/tmp-folders via --workspace-root
+
+Scheduling a task via webhook API:
+
+    curl -XPOST "http://localhost:8080/webhook?pipeline=bass-example-complex"
+
+
+Notes
+---
+
 * Minimal orchestrator
     * support periodic poll or webhook
     * posts results (trace, logs and possibly metrics) to otel-collector
