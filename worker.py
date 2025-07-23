@@ -12,27 +12,28 @@ from bass.core import ExecStatus, exec_status_to_otel
 
 logging.getLogger().setLevel(logging.INFO)
 
+# class ProcessState(Enum):
+#     GOT_REPO = 0
+
 def process(job: dict, args) -> ExecStatus:
     logger = create_log_sender(job["otel"]["logs-endpoint"], job["otel"]["service-name"], job["otel"]["trace-id"])
     logging.info("Processing: %s", job["name"])
     status = ExecStatus.UNKNOWN
 
-    # TODO: chdir back to origin cwd?
-
-    # tmpdir = tempfile.mkdtemp(prefix="pipeline_", dir=args.workspace_root)
-    tmpdir = f"{args.workspace_root}/pipeline_{job["name"]}"
+    # Create workspace specific for the pipeline, ignore if already exists
+    # Ensure local clone/workspace represents both pipeline and repository
+    repository_escaped = job["pipeline"]["repository"].replace("\\", "-").replace("/", "-")
+    tmpdir = f"{args.workspace_root}/pipeline/{job["name"]}/{repository_escaped}"
+    logging.info("Workspace: %s", tmpdir)
     try:
-        os.mkdir(tmpdir)
+        os.makedirs(tmpdir)
     except FileExistsError:
         pass
 
     try:
-        # Setup temporary workspace dir
-
-        # TBD: shall this create top level span, or leave that to orchestrator?
         # TODO: Span for initial steps
         os.chdir(tmpdir)
-        
+
         if os.path.exists(f"{tmpdir}/.git"):
             logging.info("Updating repository '%s' in: '%s'", job["pipeline"]["repository"], tmpdir)
             subprocess.call(["git","clean","-xdf"])
@@ -163,6 +164,7 @@ def worker_argparse():
         )
     
     parser.add_argument("-d", "--dequeue-endpoint", type=str, action="store", default="http://localhost:8080/dequeue", help="URL to bass orchestrator dequeue endpoint")
+    # TODO: Move to env
     parser.add_argument("-s", "--dequeue-api-key", type=str, action="store", default="", help="API-key to authenticate worker towards orchestrator")
     # parser.add_argument("-t", "--tags", type=str, action="store", default="", help="Comma-separated list of tags identifying this worker")
     parser.add_argument("-w", "--workspace-root", type=str, action="store", default=tempfile.gettempdir(), help="Root folder under which data required for pipeline processing will be stored")

@@ -4,7 +4,7 @@ A quite simple build assistant
 Getting started
 ---
 
-Starting the orchestrator:
+Starting the orchestrator (default: localhost:8080):
 
     python3 orchestrator.py --api-keys key1,key2
 
@@ -28,6 +28,13 @@ Scheduling a task via webhook API:
 
     curl -XPOST "http://localhost:8080/webhook?pipeline=bass-example-complex"
 
+Grafana LGTM
+
+    (cd otel-stack && docker compose up)
+
+Test-frontend (default: localhost:5173)
+
+    (cd frontend.vue/bass && bun dev)
 
 Notes
 ---
@@ -62,11 +69,14 @@ Design decisions:
 
 TODO / TBD:
 ---
+* Top level of pipeline now gets its own additional span (after pipeline/step->node rewrite) - unclear if this is optimal. Either remove from generation, or provide visualization that takes it into account. 
+* orchestrator: move apikeys to separate file
 * Support pulling pipeline-config from URL
+* Live/periodic reload of config?
 * Implement webhook-endpoints to support e.g. bitbucket
+    * git diff-tree --no-commit-id --name-only -r {commit-id}
 * Implement polling logics (will likely require local run-time state)
 * Support workers with different capabilities?
-* Workers now cache job info relative to pipeline name. If name vs repo at some point changes this will collide. Implement handling (detect mismatch, delete local clone, try again)
 * Evaluate Python as it was chosen for simple prototyping of logic flow and responsibilities:
     * On the orchestrator/worker-side: Consider something more typesafe and efficient. Likely C or zig.
     * On the job-side: it's treated as an executable, thus most languages/runtimes can do. But it need to support some given command line arguments + provide traces and logs to otelcol of choice
@@ -81,9 +91,10 @@ TODO / TBD:
     * builds doesn't show up for frontend-search until root span is ready, but it does in grafana
     * not all steps shows up at first - but will after a while
     * is logging from steps sent with correct sev?
+    * explore if full on node-visualization pr build is better than grid to showcase nested build steps
 * Custom Grafana panel to visualize multiple traces in a grid?
 * Evaluate going/supporting OTEL-free:
-    * OTEL was chosen primarily to quicke see results as the orchestration logic got built. A local, tailored store will likely outperform for any reasonable amunts of data and traffic. May support both.
+    * OTEL was chosen primarily to quickly see results as the orchestration logic got built. A local, tailored store will likely outperform for any reasonable amunts of data and traffic. May support both.
 
 Scratch:
 ----
