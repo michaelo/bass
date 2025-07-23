@@ -49,15 +49,17 @@ table.result-matrix thead tr>:first-child {
 .result-matrix tbody th { background: #2f3240; } 
 
 th[scope=row] {
-  position: sticky;
-  left: 0;
-  z-index: 1;
+    position: sticky;
+    left: 0;
+    z-index: 1;
 }
 
 th:not([scope=row]) {
-  position: sticky;
-  top: 0;
-  z-index: 2;
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    /* writing-mode: vertical-lr;
+    text-orientation: mixed; */
 }
 
 /* all cells */
