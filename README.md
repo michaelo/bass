@@ -69,8 +69,8 @@ Design decisions:
 
 TODO / TBD:
 ---
+* Separate service name between orchestrator, worker and job? Root span naming the pipeline should be enough to identify jobs
 * Top level of pipeline now gets its own additional span (after pipeline/step->node rewrite) - unclear if this is optimal. Either remove from generation, or provide visualization that takes it into account. 
-* orchestrator: move apikeys to separate file
 * Support pulling pipeline-config from URL
 * Live/periodic reload of config?
 * Implement webhook-endpoints to support e.g. bitbucket
@@ -81,7 +81,8 @@ TODO / TBD:
     * On the orchestrator/worker-side: Consider something more typesafe and efficient. Likely C or zig.
     * On the job-side: it's treated as an executable, thus most languages/runtimes can do. But it need to support some given command line arguments + provide traces and logs to otelcol of choice
 * Tempo
-    * Increase max search interval: * query_frontend.search.max_duration (default=7d=168h)
+    * Increase max search interval:
+    * query_frontend.search.max_duration (default=7d=168h)
 * Custom frontend:
     * Extract config for endpoints, pipeline/service name format, ...
     * Streaming data from tempo/loki?s

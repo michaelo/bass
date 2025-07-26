@@ -171,10 +171,9 @@ def orch_argparse():
     # TBD: support pipeline-config from URL? And live reload/periodic sync?
     parser.add_argument("-f", "--pipelines-file", type=str, action="store", default="orchestrator-pipelines.json", help="Local path to pipeline configurations")
     parser.add_argument("-e", "--env-file", type=str, action="store", default="orchestrator.env", help="Local path to file containing variables definitions as key=value pairs. Supports $envvariable")
+    parser.add_argument("-w", "--worker-keys-file", type=str, action="store", default="worker-keys.env", help="Local path to file containing list of api-keys for agent authentication")
     # TBD: listening address?
     parser.add_argument("-p", "--port", type=int, action="store", default=8080, help="Port to listen for requests at")
-    # TBD: specify from file? At least store only hashes in memory
-    parser.add_argument("-a", "--api-keys", type=str, action="store", default="", help="Comma separated list of allowed API-keys")
     
     return parser.parse_args()
 
@@ -191,8 +190,9 @@ if __name__ == '__main__':
         tmp_env_raw = { k: os.path.expandvars(v) for (k,v) in [l.split("=") for l in f.readlines()]}
         config["env"] = tmp_env_raw
 
-    # TODO: store only hashes
-    config["api-keys"] = {x: True for x in args.api_keys.split(",")}
+    # TODO: store only hashes?
+    with(open(args.worker_keys_file, "r") as f):
+        config["api-keys"] = {x.strip(): True for x in f.readlines()}
 
     # Inform of loaded configs
     logging.info("Loaded pipelines:")
@@ -202,5 +202,7 @@ if __name__ == '__main__':
     logging.info("Loaded variables:")
     for x in config["env"]:
         logging.info(f" {x}")
+
+    logging.info("Loaded %d api keys", len(config["api-keys"].items()))
     
     server.test(HandlerClass=HTTPRequestHandler, port=args.port)

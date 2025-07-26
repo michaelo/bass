@@ -12,9 +12,6 @@ from bass.core import ExecStatus, exec_status_to_otel
 
 logging.getLogger().setLevel(logging.INFO)
 
-# class ProcessState(Enum):
-#     GOT_REPO = 0
-
 def process(job: dict, args) -> ExecStatus:
     logger = create_log_sender(job["otel"]["logs-endpoint"], job["otel"]["service-name"], job["otel"]["trace-id"])
     logging.info("Processing: %s", job["name"])
@@ -101,15 +98,9 @@ def process(job: dict, args) -> ExecStatus:
 
     return status
 
-    # shutil.rmtree(tmpdir)
 
-    # Checkout appropriate revision
-    # Setup environment
-    # Execute pipeline script
-
-
-def check_for_job(args):
-    (status, body) = bass.request("POST", args.dequeue_endpoint, None, headers={"X-API-KEY": args.dequeue_api_key})
+def check_for_job(args, api_key):
+    (status, body) = bass.request("POST", args.dequeue_endpoint, None, headers={"X-API-KEY": api_key})
 
     if status == 200:
         return json.loads(body)
@@ -126,14 +117,14 @@ def check_for_job(args):
     return None
 
 
-def main(args):
+def main(args, api_key):
     logging.info(f"Dequeue endpoint: {args.dequeue_endpoint}")
     logging.info(f"Workspace root: {args.workspace_root}")
 
     # Check for new job from orch
     while True:
         try:
-            job = check_for_job(args)
+            job = check_for_job(args, api_key)
             if not job:
                 time.sleep(1)
                 continue
@@ -158,14 +149,12 @@ def main(args):
 def worker_argparse():
     parser = argparse.ArgumentParser(
             prog = "bass worker",
-            description = None,
+            description = "Att! Requires env BASS_API_KEY with valid orchestrator api key to retrieve jobs",
             epilog = None,
             formatter_class=argparse.ArgumentDefaultsHelpFormatter
         )
     
     parser.add_argument("-d", "--dequeue-endpoint", type=str, action="store", default="http://localhost:8080/dequeue", help="URL to bass orchestrator dequeue endpoint")
-    # TODO: Move to env
-    parser.add_argument("-s", "--dequeue-api-key", type=str, action="store", default="", help="API-key to authenticate worker towards orchestrator")
     # parser.add_argument("-t", "--tags", type=str, action="store", default="", help="Comma-separated list of tags identifying this worker")
     parser.add_argument("-w", "--workspace-root", type=str, action="store", default=tempfile.gettempdir(), help="Root folder under which data required for pipeline processing will be stored")
     # --clean ? To nuke any temp-pipelines
@@ -174,6 +163,10 @@ def worker_argparse():
 
 if __name__ == "__main__":
     args = worker_argparse()
-    main(args)
+    api_key = os.environ.get("BASS_API_KEY")
+    if not api_key:
+        print("Could not find valid api key as environment variable 'BASS_API_KEY'")
+        exit(1)
+    main(args, api_key)
 
     
