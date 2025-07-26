@@ -1,7 +1,7 @@
 services:
   otel-lgtm:
     # https://github.com/grafana/docker-otel-lgtm/releases
-    image: grafana/otel-lgtm:0.11.5
+    image: grafana/otel-lgtm:0.11.6
     container_name: otel-lgtm
     ports:
       - 3000:3000 # grafana
@@ -11,6 +11,10 @@ services:
       - 3100:3100 # loki
     networks:
       otel:
+    environment:
+      - GF_PATHS_PROVISIONING=/opt/grafana-provisioning
+    volumes:
+      - ./grafana-provisioning:/opt/grafana-provisioning
   # Due to lacking "Access-Control-Allow-Origin"-header from tempo API we'll spin up an nginx as proxy to add this
   # Not overkill at all.
   tempo-proxy:
