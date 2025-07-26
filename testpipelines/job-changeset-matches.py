@@ -5,6 +5,7 @@ logging.getLogger().setLevel(logging.DEBUG)
 
 pipeline = {
     "name": "mypipeline",
+    "if-changeset-matches": "job-",
     "exec": ["./build.sh"],
 }
 

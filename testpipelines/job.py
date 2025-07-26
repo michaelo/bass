@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# Envs available: TRACEPARENT?
 from bass import assert_pipeline, build
 import logging
 logging.getLogger().setLevel(logging.DEBUG)

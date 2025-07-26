@@ -51,5 +51,13 @@
         "exec": [
             "python3", "job-simple.py"
         ]
+    },
+    "bass-example-matches": {
+        "repository": "git@github.com:michaelo/bass.git",
+        "ref": "main",
+        "cwd": "./testpipelines",
+        "exec": [
+            "python3", "job-changeset-matches.py"
+        ]
     }
 }
