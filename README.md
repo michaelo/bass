@@ -5,20 +5,22 @@ Getting started
 ---
 
 Starting the orchestrator (default: localhost:8080):
+    # Assuming file 'worker-keys' contains e.g. 'key1' as a valid api key
 
-    python3 orchestrator.py --api-keys key1,key2
+    python3 orchestrator.py --worker-keys-file=worker-keys
 
     or (for hacky reload):
 
-    watchexec -r "python3 orchestrator.py --api-keys key1,key2"
+    watchexec -r "python3 orchestrator.py --worker-keys-file=worker-keys"
 
 Starting a worker:
 
-    PYTHONPATH=/path/to/local/repo python3 worker.py --dequeue-api-key key1
+
+    BASS_API_KEY=key1 PYTHONPATH=/path/to/local/repo python3 worker.py 
 
     or (for hacky reload):
 
-    watchexec -r "PYTHONPATH=/path/to/local/repo python3 worker.py --dequeue-api-key key1"
+    watchexec -r "PYTHONPATH=/path/to/local/repo BASS_API_KEY=key1 python3 worker.py"
 
 PYTHONPATH enables the worker (and jobs exectued by the worker) to locate the 'bass' python module.
 
@@ -83,7 +85,7 @@ TODO / TBD:
 * Tempo
     * Increase max search interval:
     * query_frontend.search.max_duration (default=7d=168h)
-* Custom frontend:
+* Custom frontend (low pri):
     * Extract config for endpoints, pipeline/service name format, ...
     * Streaming data from tempo/loki?s
     * logs from loki: GET http://127.0.0.1:3100/loki/api/v1/query ?
@@ -96,6 +98,7 @@ TODO / TBD:
 * Custom Grafana panel to visualize multiple traces in a grid?
 * Evaluate going/supporting OTEL-free:
     * OTEL was chosen primarily to quickly see results as the orchestration logic got built. A local, tailored store will likely outperform for any reasonable amunts of data and traffic. May support both.
+* TBD: make example utilizing bash or other languages for builds? consider combining with otel-cli for convenience.
 
 Scratch:
 ----

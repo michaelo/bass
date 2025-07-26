@@ -171,7 +171,7 @@ def orch_argparse():
     # TBD: support pipeline-config from URL? And live reload/periodic sync?
     parser.add_argument("-f", "--pipelines-file", type=str, action="store", default="orchestrator-pipelines.json", help="Local path to pipeline configurations")
     parser.add_argument("-e", "--env-file", type=str, action="store", default="orchestrator.env", help="Local path to file containing variables definitions as key=value pairs. Supports $envvariable")
-    parser.add_argument("-w", "--worker-keys-file", type=str, action="store", default="worker-keys.env", help="Local path to file containing list of api-keys for agent authentication")
+    parser.add_argument("-w", "--worker-keys-file", type=str, action="store", default="worker-keys", help="Local path to file containing list of api-keys for agent authentication")
     # TBD: listening address?
     parser.add_argument("-p", "--port", type=int, action="store", default=8080, help="Port to listen for requests at")
     
