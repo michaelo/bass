@@ -125,7 +125,6 @@ function setPipeline(name: string) {
     title.value = name;
     currentPipeline.value = pipelines[name];
 
-    // TODO: get build/trace data
     getBuildsForPipeline(config, name).then(result => {
         pipelineInfo.value = result;
     });

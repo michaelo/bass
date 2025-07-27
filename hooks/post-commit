@@ -1,5 +1,4 @@
 # Add this script to your central git clone to push notifications to the bass orchestrator
-# TODO: specify secret?
 bass_base="http://localhost:8080"
 pipeline="mypipeline"
 

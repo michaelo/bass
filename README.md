@@ -74,8 +74,9 @@ TODO / TBD:
 * Automated integration tests?
 * Separate service name between orchestrator, worker and job? Root span naming the pipeline should be enough to identify jobs
 * Top level of pipeline now gets its own additional span (after pipeline/step->node rewrite) - unclear if this is optimal. Either remove from generation, or provide visualization that takes it into account. 
-* Support pulling pipeline-config from URL
-* Live/periodic reload of config?
+* Improved orchestrator config handling:
+    * Support pulling pipeline-config from URL
+    * Live/periodic reload of config?
 * Implement polling logics (will likely require local run-time state)
 * Support workers with different capabilities?
 * Evaluate Python as it was chosen for simple prototyping of logic flow and responsibilities:
@@ -85,7 +86,6 @@ TODO / TBD:
     * Increase max search interval:
     * query_frontend.search.max_duration (default=7d=168h)
 * Custom frontend (low pri):
-    * Extract config for endpoints, pipeline/service name format, ...
     * Streaming data from tempo/loki?s
     * logs from loki: GET http://127.0.0.1:3100/loki/api/v1/query ?
         query = {service_name="bass:pipeline:jobname"} | trace_id = "..."

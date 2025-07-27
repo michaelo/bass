@@ -172,8 +172,7 @@ def job_argparse(pipeline_name:str):
                     description = None,
                     epilog = None)
     
-    # TBD: support single param comma-separated list as well?
-    parser.add_argument("-s", "--service-name", type=str, action="store", default=f"pipeline:{pipeline_name}", help="Name to use for otel trace")
+    parser.add_argument("-s", "--service-name", type=str, action="store", default=f"bass:pipeline:{pipeline_name}", help="Name to use for otel trace")
     parser.add_argument("-i", "--trace-id", type=str, action="store", default=generate_trace_id(), help="")
     parser.add_argument("-d", "--root-span-id", type=str, action="store", default=generate_span_id(), help="")
     parser.add_argument("-g", "--generate-root-span", action="store_true", default=False, help="")
@@ -189,7 +188,6 @@ def job_argparse(pipeline_name:str):
 def assert_pipeline(node) -> bool:
     """Asserts that a pipeline is properly setup"""
     # Perform necessary ducktyping on pipeline-object to verify it's structure
-    # TBD if it always shall be called, or if it's opt-in to do while developing pipeline
     assert "name" in node and type(node["name"]) == str
     assert "steps" in node or "exec" in node
     assert not ("steps" in node and "exec" in node)
@@ -329,8 +327,7 @@ def build(pipeline):
     root_end = utcnow()
     
     if args.generate_root_span:
-        # TODO: fix status in case of errors
-        spanner(f"pipeline:{pipeline['name']}", None, root_span_id, root_start, root_end, 1)
+        spanner(f"pipeline:{pipeline['name']}", None, root_span_id, root_start, root_end, 1 if exit_code == ExecStatus.OK else 2)
     
     logging.info(f"Execution concluded with status: {exit_code} / {exit_code.value}")
     exit(exit_code.value)

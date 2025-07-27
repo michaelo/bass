@@ -97,7 +97,6 @@ class HTTPRequestHandler(server.SimpleHTTPRequestHandler):
 
 
         # Get it done!
-        # TODO: send trace id and root span id
         # Create a preliminary root span which the worker will eventually update?
         trace_id = bass.generate_trace_id()
         root_span_id = bass.generate_span_id()
@@ -178,7 +177,6 @@ def orch_argparse():
     parser.add_argument("-f", "--pipelines-file", type=str, action="store", default="orchestrator-pipelines.json", help="Local path to pipeline configurations")
     parser.add_argument("-e", "--env-file", type=str, action="store", default="orchestrator.env", help="Local path to file containing variables definitions as key=value pairs. Supports $envvariable")
     parser.add_argument("-w", "--worker-keys-file", type=str, action="store", default="worker-keys", help="Local path to file containing list of api-keys for agent authentication")
-    # TBD: listening address?
     parser.add_argument("-p", "--port", type=int, action="store", default=8080, help="Port to listen for requests at")
     
     return parser.parse_args()
