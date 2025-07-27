@@ -42,6 +42,14 @@ def process(job: dict, args) -> ExecStatus:
         logging.info(f"Checking out: {job["pipeline"]["ref"]}")
         subprocess.call(["git", "checkout", job["pipeline"]["ref"], "."])
 
+        # Get changes
+        changed_files = set()
+        if "changed-refs" in job and len(job["changed-refs"])>0:
+            for changed_ref in job["changed-refs"]:
+               result = subprocess.check_output(["git","diff-tree","--no-commit-id","--name-only","-r",changed_ref]).decode("utf-8")
+               changed_files = changed_files.union(set(result.splitlines()))
+
+        # 
         if "cwd" in job["pipeline"]:
             os.chdir(job["pipeline"]["cwd"])
 
@@ -69,23 +77,25 @@ def process(job: dict, args) -> ExecStatus:
                 job["otel"]["logs-endpoint"],
             ]
 
+            for file in changed_files:
+                command += ["--changeset", file]
+
             logging.info("Executing command: %s", command)
             result = subprocess.run(command, env={**os.environ, **job["env"], **{"PYTHONPATH":os.environ.get("PYTHONPATH", "")}}, capture_output=True)
 
             # Get response and log it!
-            if len(result.stderr) > 0:
-                logger(job["otel"]["root-span-id"], "ERROR", result.stderr.decode())
-
-            if len(result.stdout) > 0:
-                logger(job["otel"]["root-span-id"], "INFO", result.stdout.decode())
 
             if result.returncode == ExecStatus.OK.value:
                 logging.info("Build finished successfully")
+                logger(job["otel"]["root-span-id"], "INFO", result.stderr.decode())
+                logger(job["otel"]["root-span-id"], "INFO", result.stdout.decode())
                 logger(job["otel"]["root-span-id"], "INFO", "Build finished successfully")
                 status = ExecStatus.OK
             else:
                 logging.error(f"Build finished with error code: {result.returncode}")
-                logger(job["otel"]["root-span-id"], "INFO", f"Build finished with error code: {result.returncode}")
+                logger(job["otel"]["root-span-id"], "ERROR", result.stderr.decode())
+                logger(job["otel"]["root-span-id"], "ERROR", result.stdout.decode())
+                logger(job["otel"]["root-span-id"], "ERROR", f"Build finished with error code: {result.returncode}")
                 status = ExecStatus.ERROR
         except Exception as e:
             logging.error("Failure during build step")

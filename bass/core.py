@@ -134,6 +134,10 @@ def execute_span(span_sender: callable, span_name: str, func: callable):
     pass
 
 def check_if_changeset_matches(changeset: list[str], match_criteria: None|str):
+    # No changeset is all changes
+    if not changeset or len(changeset) == 0:
+        return True
+
     # No criteria is all criteria
     if not match_criteria:
         return True
@@ -142,7 +146,7 @@ def check_if_changeset_matches(changeset: list[str], match_criteria: None|str):
     exp = re.compile(match_criteria)
     
     for change in changeset:
-        if exp.match(change) != None:
+        if exp.search(change) != None:
             return True
         
     return False
@@ -191,7 +195,7 @@ def assert_pipeline(node) -> bool:
     assert not ("steps" in node and "exec" in node)
 
     if "if-changeset-matches" in node:
-        assert re.compile(step["if-changeset-matches"])    
+        assert re.compile(node["if-changeset-matches"])    
 
     if "exec" in node:
         assert type(node["exec"]) == list or type(node["exec"]) == str

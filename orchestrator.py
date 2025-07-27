@@ -90,6 +90,11 @@ class HTTPRequestHandler(server.SimpleHTTPRequestHandler):
         if params["pipeline"] not in config["pipelines"]:
             self.send_error(404, "No such job")
             return
+        
+        changed_refs = []
+        if "changed-refs" in params:
+            changed_refs = params["changed-refs"].split(",")
+
 
         # Get it done!
         # TODO: send trace id and root span id
@@ -98,10 +103,10 @@ class HTTPRequestHandler(server.SimpleHTTPRequestHandler):
         root_span_id = bass.generate_span_id()
         service_name = f"bass:pipeline:{params['pipeline']}"
 
-        root_span = bass.generate_span(trace_id, root_span_id, bass.generate_span_id(), service_name, "onSchedule", bass.utcnow(), bass.utcnow(), 1)
-        (code, msg) = bass.request("POST", config["otel"]["traces-endpoint"], root_span, {"Content-Type": "application/json"})
+        schedule_span = bass.generate_span(trace_id, root_span_id, bass.generate_span_id(), service_name, "onSchedule", bass.utcnow(), bass.utcnow(), 1)
+        (code, msg) = bass.request("POST", config["otel"]["traces-endpoint"], schedule_span, {"Content-Type": "application/json"})
         if code != 200:
-            logging.error(f"Could not post placeholder root span: {code}, {msg}")
+            logging.error(f"Could not post schedule span: {code}, {msg}")
 
 
         scheduleJob({
@@ -109,6 +114,7 @@ class HTTPRequestHandler(server.SimpleHTTPRequestHandler):
             "schedule-time": bass.utcnow().isoformat(),
             "env": config["env"],
             "pipeline": config["pipelines"][params["pipeline"]],
+            "changed-refs": changed_refs,
             "otel": {**dict(config["otel"]), **{
                 "service-name": service_name,
                 "trace-id": trace_id,
