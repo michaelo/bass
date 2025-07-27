@@ -9,16 +9,15 @@ Starting the orchestrator (default: localhost:8080):
 
     python3 orchestrator.py --worker-keys-file=worker-keys
 
-    or (for hacky reload):
+    # or (for hacky reload):
 
     watchexec -r "python3 orchestrator.py --worker-keys-file=worker-keys"
 
 Starting a worker:
 
-
     BASS_API_KEY=key1 PYTHONPATH=/path/to/local/repo python3 worker.py 
 
-    or (for hacky reload):
+    # or (for hacky reload):
 
     watchexec -r "PYTHONPATH=/path/to/local/repo BASS_API_KEY=key1 python3 worker.py"
 
@@ -30,13 +29,60 @@ Scheduling a task via webhook API:
 
     curl -XPOST "http://localhost:8080/webhook?pipeline=bass-example-complex"
 
-Grafana LGTM
+Grafana LGTM - for Grafana (dashboards), Tempo (trace store), Loki (log store) and Alloy (Open Telemetry collector)
 
     (cd otel-stack && docker compose up)
 
-Test-frontend (default: localhost:5173)
+Test-frontend (default: localhost:5173) - to explore more optimized visualization experiences
 
     (cd frontend.vue/bass && bun dev)
+
+
+Build entry point requirements / recommendations:
+---
+
+* It shall be directly executable from shell
+* Must accept the following arguments:
+    * --service-name / -s
+        * the service name to use for each telemetry entry
+    * --trace-id / -i
+        * the the trace id to use for each telemetry entry
+    * --root-span-id / -d
+        * the parent span id to use for top level build steps (deeper hierarchy for sub-steps are allowed)
+    * --traces-endpoint / -t
+        * the URL to endpoint accepting open telemetry traces ("otel collector")
+    * --logs-endpoint / -l
+        * the URL to endpoint accepting open telemetry logs ("otel collector")
+    * --changeset / -c
+        * path to file with list (by line) of modified files related to triggering the build. Allows build steps to conditionally execute upon need.
+
+
+Python builder:
+---
+
+There's currently one reference implementation of the builder itself. The Python based builder supports pipelines of arbitrary nested depths, sequential and parallell processing of steps as well as conditionally execute steps based on changeset.
+
+Format: See examples under `/testpipelines/`
+
+Each `Node` in the build graph can either specify a command to execute or a set of sub-nodes/steps:
+
+```json
+{
+    -- general fields for all nodes
+    "name": "step name",
+    "if-changeset-matches": "regex-pattern", -- optional
+
+    -- if exec node:
+    "timeout": "10", -- seconds, optional
+    "exec": ["./buildscript.sh"],
+    -- or if parent node:
+    "steps": [
+        { ... sub node 1 },
+        { ... sub node 2 }
+    ]
+}
+```
+
 
 Notes
 ---
@@ -77,7 +123,7 @@ TODO / TBD:
 * Improved orchestrator config handling:
     * Support pulling pipeline-config from URL
     * Live/periodic reload of config?
-* Implement polling logics (will likely require local run-time state)
+* Implement pipeline change polling logic (will likely require local run-time state)
 * Support workers with different capabilities?
 * Evaluate Python as it was chosen for simple prototyping of logic flow and responsibilities:
     * On the orchestrator/worker-side: Consider something more typesafe and efficient. Likely C or zig.
