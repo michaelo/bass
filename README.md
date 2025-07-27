@@ -76,12 +76,6 @@ TODO / TBD:
 * Top level of pipeline now gets its own additional span (after pipeline/step->node rewrite) - unclear if this is optimal. Either remove from generation, or provide visualization that takes it into account. 
 * Support pulling pipeline-config from URL
 * Live/periodic reload of config?
-* Implement webhook-endpoints to support e.g. bitbucket
-    * git diff-tree --no-commit-id --name-only -r {commit-id}
-    * Possibilties:
-        * have orchestrator support git-clone and git-diff-tree etc to generate changeset on-webhook.
-        * have orchestrator pass on git-refs ot the worker, which in any case need to know git and extract diffs there
-            * this appears to be the simpler option. 
 * Implement polling logics (will likely require local run-time state)
 * Support workers with different capabilities?
 * Evaluate Python as it was chosen for simple prototyping of logic flow and responsibilities:
