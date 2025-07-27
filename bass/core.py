@@ -179,8 +179,7 @@ def job_argparse(pipeline_name:str):
     parser.add_argument("-t", "--traces-endpoint", type=str, action="store", default="http://localhost:4318/v1/traces", help="")
     parser.add_argument("-l", "--logs-endpoint", type=str, action="store", default="http://localhost:4318/v1/logs", help="")
     parser.add_argument("-f", "--force", action="store_true", default=False, help="Will force build all steps")
-
-    parser.add_argument("-c", "--changeset", action="append", default=[], help="Modified path. Can be specified multiple times.")
+    parser.add_argument("-c", "--changeset", type=str, action="store", default=None, help="Path to file with list of modified files, allows steps to be conditionally executed")
     
     return parser.parse_args()
 
@@ -318,12 +317,18 @@ def build(pipeline):
     args = job_argparse(pipeline["name"])
     print(args)
 
+    changeset = []
+    if args.changeset:
+        with open(args.changeset, "r") as f:
+            changeset + [x.strip() for x in f.readlines()]
+
+
     spanner = create_span_sender(args.traces_endpoint, args.service_name, args.trace_id)
-    logger = create_log_sender(args.logs_endpoint, args.service_name, args.trace_id)
+    # logger = create_log_sender(args.logs_endpoint, args.service_name, args.trace_id)
     root_span_id = args.root_span_id
 
     root_start = utcnow()
-    exit_code = build_inner(args, pipeline, root_span_id, args.changeset)
+    exit_code = build_inner(args, pipeline, root_span_id, changeset)
     root_end = utcnow()
     
     if args.generate_root_span:

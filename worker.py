@@ -21,6 +21,7 @@ def process(job: dict, args) -> ExecStatus:
     # Ensure local clone/workspace represents both pipeline and repository
     repository_escaped = job["pipeline"]["repository"].replace("\\", "-").replace("/", "-")
     tmpdir = f"{args.workspace_root}/pipeline/{job["name"]}/{repository_escaped}"
+    tmpfile_changeset = None
     logging.info("Workspace: %s", tmpdir)
     try:
         os.makedirs(tmpdir)
@@ -28,13 +29,13 @@ def process(job: dict, args) -> ExecStatus:
         pass
 
     try:
-        # TODO: Span for initial steps
+        # TODO: Span for initial steps?
         os.chdir(tmpdir)
 
         if os.path.exists(f"{tmpdir}/.git"):
             logging.info("Updating repository '%s' in: '%s'", job["pipeline"]["repository"], tmpdir)
-            subprocess.call(["git","clean","-xdf"])
-            subprocess.call(["git","pull"])
+            subprocess.call(["git", "clean", "-xdf"])
+            subprocess.call(["git", "pull"])
         else:
             logging.info("Cloning repository '%s' to: '%s'", job["pipeline"]["repository"], tmpdir)
             subprocess.call(["git", "clone", job["pipeline"]["repository"], "."])
@@ -42,14 +43,7 @@ def process(job: dict, args) -> ExecStatus:
         logging.info(f"Checking out: {job["pipeline"]["ref"]}")
         subprocess.call(["git", "checkout", job["pipeline"]["ref"], "."])
 
-        # Get changes
-        changed_files = set()
-        if "changed-refs" in job and len(job["changed-refs"])>0:
-            for changed_ref in job["changed-refs"]:
-               result = subprocess.check_output(["git","diff-tree","--no-commit-id","--name-only","-r",changed_ref]).decode("utf-8")
-               changed_files = changed_files.union(set(result.splitlines()))
 
-        # 
         if "cwd" in job["pipeline"]:
             os.chdir(job["pipeline"]["cwd"])
 
@@ -77,8 +71,22 @@ def process(job: dict, args) -> ExecStatus:
                 job["otel"]["logs-endpoint"],
             ]
 
-            for file in changed_files:
-                command += ["--changeset", file]
+
+            # Get changes - resolve from list of git revisions to list of files
+            changed_files = set()
+            if "changed-refs" in job and len(job["changed-refs"])>0:
+                for changed_ref in job["changed-refs"]:
+                    result = subprocess.check_output(["git", "diff-tree", "--no-commit-id", "--name-only", "-r", changed_ref]).decode("utf-8")
+                    changed_files = changed_files.union(set(result.splitlines()))
+                    # TODO: append directly to file?
+
+            # For very large sets of files we might hit OS-limits for exec arguments. We therefore write them to a temporary file and pass this to the build command
+            if len(changed_files) > 0:
+                tmpfile_changeset = tempfile.mktemp(prefix=f"bass-{job['name']}-changeset")
+                with open(tmpfile_changeset, "w") as f:
+                    f.writelines([x + "\n" for x in changed_files])
+
+                command += ["--changeset", tmpfile_changeset]
 
             logging.info("Executing command: %s", command)
             result = subprocess.run(command, env={**os.environ, **job["env"], **{"PYTHONPATH":os.environ.get("PYTHONPATH", "")}}, capture_output=True)
@@ -87,24 +95,39 @@ def process(job: dict, args) -> ExecStatus:
 
             if result.returncode == ExecStatus.OK.value:
                 logging.info("Build finished successfully")
-                logger(job["otel"]["root-span-id"], "INFO", result.stderr.decode())
-                logger(job["otel"]["root-span-id"], "INFO", result.stdout.decode())
+
+                if len(result.stderr) > 0:
+                    logger(job["otel"]["root-span-id"], "INFO", result.stderr.decode())
+
+                if len(result.stdout) > 0:
+                    logger(job["otel"]["root-span-id"], "INFO", result.stdout.decode())
+
                 logger(job["otel"]["root-span-id"], "INFO", "Build finished successfully")
                 status = ExecStatus.OK
             else:
                 logging.error(f"Build finished with error code: {result.returncode}")
-                logger(job["otel"]["root-span-id"], "ERROR", result.stderr.decode())
-                logger(job["otel"]["root-span-id"], "ERROR", result.stdout.decode())
+
+                if len(result.stderr) > 0:
+                    logger(job["otel"]["root-span-id"], "ERROR", result.stderr.decode())
+
+                if len(result.stdout) > 0:
+                    logger(job["otel"]["root-span-id"], "ERROR", result.stdout.decode())
+
                 logger(job["otel"]["root-span-id"], "ERROR", f"Build finished with error code: {result.returncode}")
                 status = ExecStatus.ERROR
         except Exception as e:
             logging.error("Failure during build step")
             logging.exception(e)
+            logger(job["otel"]["root-span-id"], "ERROR", f"Failure during build step: {str(e)}")
             status = ExecStatus.ERROR
 
     except Exception as e:
         logging.error("Exception: ", e)
         status = ExecStatus.ERROR
+
+    # Cleaning up
+    if tmpfile_changeset:
+        os.remove(tmpfile_changeset)
 
     return status
 
@@ -145,9 +168,9 @@ def main(args, api_key):
 
             otel_status = exec_status_to_otel[status.value]
 
-            # Update root span
-            updated_root_span = bass.generate_span(job["otel"]["trace-id"], None, job["otel"]["root-span-id"], job["otel"]["service-name"], f"Build: {job["name"]} - {status.name}", time_start, time_finished, otel_status)
-            (code, msg) = bass.request("POST", job["otel"]["traces-endpoint"], updated_root_span, {"Content-Type": "application/json"})
+            # Finally send root span
+            root_span = bass.generate_span(job["otel"]["trace-id"], None, job["otel"]["root-span-id"], job["otel"]["service-name"], f"Build: {job["name"]} - {status.name}", time_start, time_finished, otel_status)
+            (code, msg) = bass.request("POST", job["otel"]["traces-endpoint"], root_span, {"Content-Type": "application/json"})
             if code != 200:
                 logging.error(f"Could not post root span: {code}, {msg}")
 
