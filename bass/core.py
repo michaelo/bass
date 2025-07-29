@@ -11,7 +11,6 @@ import subprocess
 from concurrent.futures import ThreadPoolExecutor
 
 type Severity = Literal["TRACE", "DEBUG", "INFO", "WARN", "ERROR", "FATAL"]
-# otel span status: 0: undefined, 1: ok, 2: error
 
 def generate_span(trace_id: str, parent_span_id: None|str, span_id: str, service: str, name: str, time_from: datetime.datetime, time_to: datetime.datetime, status: int):
     return {
@@ -113,10 +112,6 @@ def request(method: Literal["GET", "POST", "PUT", "DELETE"], url, payload=None, 
 def utcnow() -> datetime.datetime:
     return datetime.datetime.now(tz=datetime.timezone.utc)
 
-def now_nano() -> int:
-    """Returns current UNIX timestamp in nanoseconds"""
-    return int((utcnow() - datetime.timedelta(seconds=5)).timestamp() * 1000000000)
-
 def datetime_to_nano(time: datetime.datetime):
     return int(time.timestamp() * 1000000000)
 
@@ -128,10 +123,6 @@ def generate_trace_id():
 
 def generate_span_id():
     return generate_hex_string(8)
-
-# Execute lambda and wrap result as span
-def execute_span(span_sender: callable, span_name: str, func: callable):
-    pass
 
 def check_if_changeset_matches(changeset: list[str], match_criteria: None|str):
     # No changeset is all changes
@@ -157,15 +148,6 @@ def test_check_if_changeset_matches():
     assert check_if_changeset_matches(["some/path", "another/path"], "^another")
     assert not check_if_changeset_matches(["some/path"], "^another")
 
-
-def process_step(buildCtx, step):
-    # take time
-    # execute step, store log and status code
-    # take time
-    # generate and send span and log entry
-    pass
-
-
 def job_argparse(pipeline_name:str):
     parser = argparse.ArgumentParser(
                     prog = pipeline_name,
@@ -178,11 +160,10 @@ def job_argparse(pipeline_name:str):
     parser.add_argument("-g", "--generate-root-span", action="store_true", default=False, help="")
     parser.add_argument("-t", "--traces-endpoint", type=str, action="store", default="http://localhost:4318/v1/traces", help="")
     parser.add_argument("-l", "--logs-endpoint", type=str, action="store", default="http://localhost:4318/v1/logs", help="")
-    parser.add_argument("-f", "--force", action="store_true", default=False, help="Will force build all steps")
+    # parser.add_argument("-f", "--force", action="store_true", default=False, help="Will force build all steps")
     parser.add_argument("-c", "--changeset", type=str, action="store", default=None, help="Path to file with list of modified files, allows steps to be conditionally executed")
     
     return parser.parse_args()
-
 
 def assert_pipeline(node) -> bool:
     """Asserts that a pipeline is properly setup"""
@@ -204,8 +185,6 @@ def assert_pipeline(node) -> bool:
         for step in node["steps"]:
             assert_pipeline(step)
 
-            # assert callable(step["exec"]) or type(step["exec"]) == list or type(step["exec"]) == str
-
 def create_span_sender(traces_endpoint: str, service_name: str, trace_id: str) -> Callable[[str, str, str, datetime.datetime, datetime.datetime, int], None]:
     def span_sender(name: str, parent_span_id: None|str, span_id: str, time_from:datetime.datetime, time_to:datetime.datetime, status: int):
         span = generate_span(trace_id, parent_span_id, span_id, service_name, name, time_from, time_to, status)
@@ -226,7 +205,7 @@ def create_log_sender(logs_endpoint: str, service_name: str, trace_id: str) -> C
     return log_sender
 
 class ExecStatus(Enum):
-    OK = 0
+    OK = 0 # Intentionally to play nice as exit code
     UNKNOWN = 1
     TIMEOUT = 2
     ERROR = 3
@@ -238,9 +217,8 @@ exec_status_to_otel = {
     3: 2 # ERROR
 }
 
-
 def exec_step(step, changeset) -> tuple[ExecStatus, str, str]:
-    """Returns tuple of (status, stdout, stderr). Status: result code"""
+    """Returns tuple of (status, stdout, stderr)"""
     if not check_if_changeset_matches(changeset, step.get("if-changeset-matches", None)):
         return (ExecStatus.OK, f"Skpping step: {step["name"]}", "")
     else:
@@ -268,14 +246,18 @@ def exec_step(step, changeset) -> tuple[ExecStatus, str, str]:
 
 def build_inner(args, node, parent_span_id, changeset) -> ExecStatus:
     # Check node: if exec: execute directly. If steps: recurse.
-        # Always establish span for sub-nodes
-    # Errors need to propagate
-    step_start = utcnow()
+    time_step_start = utcnow()
     span_id = generate_span_id()
     result = ExecStatus.OK
     
     spanner = create_span_sender(args.traces_endpoint, args.service_name, args.trace_id)
     logger = create_log_sender(args.logs_endpoint, args.service_name, args.trace_id)
+
+    initial_cwd = os.getcwd()
+    if "cwd" in node:
+        # TODO: ensure we don't navigate out of repo/workspace?
+        os.chdir(f"{initial_cwd}/{node["cwd"]}")
+        logging.info(f"Changing chdir to: {os.getcwd()}")
     
     if "exec" in node:
         try:
@@ -293,7 +275,7 @@ def build_inner(args, node, parent_span_id, changeset) -> ExecStatus:
             logger(span_id, "INFO", step_stdout)
     elif "steps" in node:
         if "order" in node and node["order"] == "unordered":
-            
+            # TODO: Make num workers configurable?
             with ThreadPoolExecutor(max_workers=5) as executor:
                 futures = []    
                 for step in node["steps"]:
@@ -309,22 +291,22 @@ def build_inner(args, node, parent_span_id, changeset) -> ExecStatus:
                 if step_result.value > result.value:
                     result = step_result
 
-    step_end = utcnow()
+    time_step_end = utcnow()
 
-    # Send span
-    spanner(f"step:{node['name']}", parent_span_id, span_id, step_start, step_end, 1 if result == ExecStatus.OK else 2)
+    os.chdir(initial_cwd)
+
+    spanner(f"step:{node['name']}", parent_span_id, span_id, time_step_start, time_step_end, exec_status_to_otel[result.value])
 
     return result
 
 def build(pipeline):
     args = job_argparse(pipeline["name"])
-    print(args)
+    logging.info(args)
 
     changeset = []
     if args.changeset:
         with open(args.changeset, "r") as f:
             changeset + [x.strip() for x in f.readlines()]
-
 
     spanner = create_span_sender(args.traces_endpoint, args.service_name, args.trace_id)
     # logger = create_log_sender(args.logs_endpoint, args.service_name, args.trace_id)
@@ -335,7 +317,7 @@ def build(pipeline):
     root_end = utcnow()
     
     if args.generate_root_span:
-        spanner(f"pipeline:{pipeline['name']}", None, root_span_id, root_start, root_end, 1 if exit_code == ExecStatus.OK else 2)
+        spanner(f"pipeline:{pipeline['name']}", None, root_span_id, root_start, root_end, exec_status_to_otel[exit_code.value])
     
     logging.info(f"Execution concluded with status: {exit_code} / {exit_code.value}")
     exit(exit_code.value)

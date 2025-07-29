@@ -5,9 +5,9 @@
         "exec": [
             "python3", "job.py"
         ],
-        "msg-pattern": ".*",
         "poll": null,
         "x-webhook": {
+            "msg-pattern": ".*",
             "x-ref-pattern": "main"
         }
     },
@@ -30,9 +30,9 @@
         "exec": [
             "python3", "job.py"
         ],
-        "msg-pattern": ".*",
         "poll": null,
         "x-webhook": {
+            "msg-pattern": ".*",
             "x-ref-pattern": "main"
         }
     },
@@ -56,8 +56,36 @@
         "repository": "git@github.com:michaelo/bass.git",
         "ref": "main",
         "cwd": "./testpipelines",
+        "exec": ["python3", "job-changeset-matches.py"]
+    },
+    "bass-example-cwd": {
+        "repository": "git@github.com:michaelo/bass.git",
+        "ref": "main",
+        "cwd": "./testpipelines",
         "exec": [
-            "python3", "job-changeset-matches.py"
+            "python3", "job-cwd.py"
         ]
+    },
+    "notification-test": {
+        "repository": "git@github.com:michaelo/bass.git",
+        "ref": "main",
+        "cwd": "./testpipelines",
+        "exec": ["python3", "job-simple.py"],
+        "notifications": {
+            "onFailure": {
+                "email": {
+                    "to": "me@michaelodden.com",
+                    "subject": "Build $PIPELINE_NAME failed",
+                    "body": "Build: $TRACEID failed"
+                }
+            },
+            "onSuccess": {
+                "email": {
+                    "to": "me@michaelodden.com",
+                    "subject": "Build $PIPELINE_NAME succeeded",
+                    "body": "Build: $TRACEID succeeded <a href=\"$TRACEURL\"></a>"
+                }
+            }
+        }
     }
 }
