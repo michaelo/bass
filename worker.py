@@ -6,11 +6,26 @@ import tempfile
 import os
 import subprocess
 import argparse
+from string import Template
 import bass
-from bass import create_log_sender
+from bass import create_log_sender, notification
 from bass.core import ExecStatus, exec_status_to_otel
 
 logging.getLogger().setLevel(logging.INFO)
+
+def handle_notifications(notifications_config: dict, job_status: ExecStatus, variables: dict = {}):
+    notification_type = "onSuccess" if job_status == ExecStatus.OK else "onFailure"
+    if notification_type in notifications_config:
+        if "email" in notifications_config[notification_type]:
+            print("got email config")
+            email = notifications_config[notification_type]["email"]
+            assert "to" in email
+            assert "subject" in email
+            assert "body" in email
+            
+            notification.send_email("bass@local", email["to"], Template(email["subject"]).safe_substitute(variables), Template(email["body"]).safe_substitute(variables))
+        
+
 
 def process(job: dict, args) -> ExecStatus:
     logger = create_log_sender(job["otel"]["logs-endpoint"], job["otel"]["service-name"], job["otel"]["trace-id"])
@@ -115,6 +130,16 @@ def process(job: dict, args) -> ExecStatus:
 
                 logger(job["otel"]["root-span-id"], "ERROR", f"Build finished with error code: {result.returncode}")
                 status = ExecStatus.ERROR
+
+            # Notifications
+            if "notifications" in job["pipeline"]:
+                # TODO: establish all variables that shall be supported
+                notification_variables = {
+                    "PIPELINE_NAME": job["name"],
+                    "TRACEID": job["otel"]["trace-id"]
+                }
+                handle_notifications(job["pipeline"]["notifications"], status, notification_variables)
+            
         except Exception as e:
             logging.error("Failure during build step")
             logging.exception(e)
