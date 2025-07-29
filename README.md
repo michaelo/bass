@@ -133,16 +133,14 @@ Design decisions:
 TODO / TBD:
 ---
 * Ability to not execute certain steps in case of previous errors and such
-* CWD pr step? - Ensure unability to "escape" workspace
+    * case: if test-step fails, don't run deploy-step
+    * case: always perform cleanup-step
+* CWD pr step - Ensure unability to "escape" workspace
 * Implement tag filter for webhooks - tbd: try out bitbucket integration?
-* Support skip steps if preconditional steps fails?
-* Rewrite pipeline (Python-variant) to be a top-level list of nodes, not singular node? Although, we will then need to define if this top level shall be implicitly ordered or unordered...
 * HTTPS? Reverse proxy? e.g. Nginx?
-    * If all 
 * Notifications:
-    * Provide simple mail notifications upon either "always", "onerror"?
-    * Extend available variables
     * Allow recipients based on a fixed set or the author of changeset?
+    * Establish which variables shall be available
 * Automated integration tests?
     * Strategy a) Analyze data sent to otel collector?
     * Strategy b) restructure components to more simply analyze and evaluate I/O
@@ -152,7 +150,6 @@ TODO / TBD:
     * Support pulling pipeline-config from URL
     * Live/periodic reload of config?
 * Implement pipeline change polling logic (will likely require local run-time state)
-* Support workers with different capabilities?
 * Evaluate Python as it was chosen for simple prototyping of logic flow and responsibilities:
     * On the orchestrator/worker-side: Consider something more typesafe and efficient. Likely C or zig.
     * On the job-side: it's treated as an executable, thus most languages/runtimes can do. But it need to support some given command line arguments + provide traces and logs to otelcol of choice
