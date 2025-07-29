@@ -6,9 +6,9 @@ import os
 import argparse
 import bass
 
-logging.getLogger().setLevel(logging.DEBUG)
+logging.getLogger().setLevel(logging.INFO)
 
-# The list of acceptable jobs for the orchestrator etc
+# Will be propulated with configurations read from files according to arguments passed upon startup
 config = {
     "pipelines": {},
     "env": {},
@@ -63,7 +63,6 @@ def test_parse_path():
     assert ("path", {"key": "val", "some": "else"}) == parse_path("path?key=val&some=else")
 
 class HTTPRequestHandler(server.SimpleHTTPRequestHandler):
-
     def add_CORS_headers(self):
         self.send_header('Access-Control-Allow-Origin', '*')
 
@@ -126,7 +125,7 @@ class HTTPRequestHandler(server.SimpleHTTPRequestHandler):
         self.wfile.write(b"")
 
     def do_POST_dequeue(self, params: dict) -> None:
-        # If auth
+        # If auth'd
         if len(config["api-keys"].keys()) > 0:
             api_key = self.headers.get("X-API-KEY", None)
             if not api_key:
@@ -137,9 +136,25 @@ class HTTPRequestHandler(server.SimpleHTTPRequestHandler):
                 self.send_error(403, "Unauthorized")
                 return
             
-        # Check for /webhook or /dequeue
+        # Get worker tags from payload
+        content_len = int(self.headers.get('Content-Length'))
+        post_body = self.rfile.read(content_len)
+        body = json.loads(post_body)
+        tags = set(body["tags"])
+
+        # Find first (if any) scheduled job whose worker-tags is equal or a subset of the polling worker's tags
+        dequeue_i = -1
         if len(job_queue) > 0:
-            job = job_queue.pop(0)
+            for i, job in enumerate(job_queue):
+                # Find first job whose all tags exists in the set of worker tags.
+                # Converting from list to set on each check is suboptimal, but negligeble for now.
+                # Consider having a cached set pr pipeline available lookupable by pipeline name
+                if set(job["pipeline"]["worker-tags"]).issubset(tags):
+                    dequeue_i = i
+                    break
+
+        if dequeue_i > -1:
+            job = job_queue.pop(dequeue_i)
             self.send_response(200)
             self.send_header('Content-Type', 'application/json')
             self.end_headers()
@@ -188,6 +203,10 @@ if __name__ == '__main__':
     # Load configs
     with(open(args.pipelines_file, "r") as f):
         tmp_pipelines = json.load(f)
+        for k in tmp_pipelines:
+            if not "worker-tags" in tmp_pipelines[k]:
+                tmp_pipelines[k]["worker-tags"] = []
+            
         config["pipelines"] = tmp_pipelines
 
     with(open(args.env_file, "r") as f):

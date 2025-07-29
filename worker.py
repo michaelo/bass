@@ -131,6 +131,10 @@ def process(job: dict, args) -> ExecStatus:
                 logger(job["otel"]["root-span-id"], "ERROR", f"Build finished with error code: {result.returncode}")
                 status = ExecStatus.ERROR
 
+            # Add behind print level / verbose setting?
+            # logging.info(f"stdout: {result.stdout.decode()}")
+            # logging.info(f"stderr: {result.stderr.decode()}")
+
             # Notifications
             if "notifications" in job["pipeline"]:
                 # TODO: establish all variables that shall be supported
@@ -157,8 +161,8 @@ def process(job: dict, args) -> ExecStatus:
     return status
 
 
-def check_for_job(args, api_key):
-    (status, body) = bass.request("POST", args.dequeue_endpoint, None, headers={"X-API-KEY": api_key})
+def check_for_job(args, api_key: str, tags: list):
+    (status, body) = bass.request("POST", args.dequeue_endpoint, {"tags": tags}, headers={"X-API-KEY": api_key})
 
     if status == 200:
         return json.loads(body)
@@ -179,10 +183,12 @@ def main(args, api_key):
     logging.info(f"Dequeue endpoint: {args.dequeue_endpoint}")
     logging.info(f"Workspace root: {args.workspace_root}")
 
+    tags = args.tags.split(",")
+
     # Check for new job from orch
     while True:
         try:
-            job = check_for_job(args, api_key)
+            job = check_for_job(args, api_key, tags)
             if not job:
                 time.sleep(1)
                 continue
@@ -213,7 +219,7 @@ def worker_argparse():
         )
     
     parser.add_argument("-d", "--dequeue-endpoint", type=str, action="store", default="http://localhost:8080/dequeue", help="URL to bass orchestrator dequeue endpoint")
-    # parser.add_argument("-t", "--tags", type=str, action="store", default="", help="Comma-separated list of tags identifying this worker")
+    parser.add_argument("-t", "--tags", type=str, action="store", default="", help="Comma-separated list of tags identifying this worker")
     parser.add_argument("-w", "--workspace-root", type=str, action="store", default=tempfile.gettempdir(), help="Root folder under which data required for pipeline processing will be stored")
     # --clean ? To nuke any temp-pipelines
     

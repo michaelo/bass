@@ -2,6 +2,7 @@
     "jobname": {
         "repository": "file:///tmp/mypipeline",
         "ref": "main",
+        "worker-tags": ["tag1", "tag2"],
         "exec": [
             "python3", "job.py"
         ],
