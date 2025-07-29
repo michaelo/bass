@@ -257,7 +257,10 @@ def exec_step(step, changeset) -> tuple[ExecStatus, str, str]:
                 logging.error(f"Unknown command type: {type(exec["step"])}")
                 return (ExecStatus.UNKNOWN, "", f"Unknown command type: {type(exec["step"])}")
             
-            result = subprocess.run(cmd, capture_output=True, timeout=timeout)
+            # Resolve variables in cmd and execute
+            cmd_expanded = [os.path.expandvars(v) for v in cmd]
+            
+            result = subprocess.run(cmd_expanded, capture_output=True, timeout=timeout)
             return (ExecStatus.OK if result.returncode == 0 else ExecStatus.ERROR, result.stdout.decode(), result.stderr.decode())
         except subprocess.TimeoutExpired as e:
             return (ExecStatus.TIMEOUT, e.output, str(e))
