@@ -84,7 +84,21 @@ Each `Node` in the build graph can either specify a command to execute or a set 
 ```
 
 
-Notes
+Alternative solutions
+---
+You should most likely not try to pitch this to your enterprise organisation. You should probably consider CircleCI, GitHub Actions, Jenkins, Jenkins X, Airflow etc first.
+
+This project aims to replace any and all issues I've had with common CI/CD-tools such as Jenkins and GitHub Actions, e.g.:
+
+* unability to test-run pipelines locally
+* cumbersome to stay on top of dependency versions for anything but "latest"
+* trouble to explicitly defining all configuration via files
+* simple to run and manage out of cloud
+* ...
+
+This project aims for reasonable (per my personal opinion of reasonable) minimalism, and shall not have an ever-expanding feature set once v1 is reached.
+
+Dev-notes
 ---
 
 * Minimal orchestrator
@@ -95,6 +109,7 @@ Notes
     * not a build system - it shall only support calling other executables
     * supports sequential and parallell build steps, arbitrarily nested
 * Build scripts using familiar lang. E.g. python or bash?
+* Ability to run pipelines explicitly, locally
 * Assumptions / active limitations:
     * Not a general purpose multi-tenant solution. Assume all env is fair game for all jobs/workers
     * Prioritize git for initial dev
@@ -117,7 +132,20 @@ Design decisions:
 
 TODO / TBD:
 ---
+* Ability to not execute certain steps in case of previous errors and such
+* CWD pr step? - Ensure unability to "escape" workspace
+* Implement tag filter for webhooks - tbd: try out bitbucket integration?
+* Support skip steps if preconditional steps fails?
+* Rewrite pipeline (Python-variant) to be a top-level list of nodes, not singular node? Although, we will then need to define if this top level shall be implicitly ordered or unordered...
+* HTTPS? Reverse proxy? e.g. Nginx?
+    * If all 
+* Notifications:
+    * Provide simple mail notifications upon either "always", "onerror"?
+    * Extend available variables
+    * Allow recipients based on a fixed set or the author of changeset?
 * Automated integration tests?
+    * Strategy a) Analyze data sent to otel collector?
+    * Strategy b) restructure components to more simply analyze and evaluate I/O
 * Separate service name between orchestrator, worker and job? Root span naming the pipeline should be enough to identify jobs
 * Top level of pipeline now gets its own additional span (after pipeline/step->node rewrite) - unclear if this is optimal. Either remove from generation, or provide visualization that takes it into account. 
 * Improved orchestrator config handling:
