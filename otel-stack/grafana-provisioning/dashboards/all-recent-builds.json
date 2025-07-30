@@ -119,7 +119,7 @@
               "value": []
             }
           ],
-          "limit": 100,
+          "limit": 10000,
           "metricsQueryType": "range",
           "query": "{.service.name =~ \"bass:pipeline:.*\"}",
           "queryType": "traceql",
@@ -163,6 +163,5 @@
   "timepicker": {},
   "timezone": "browser",
   "title": "All recent builds",
-  "uid": "all-recent-builds",
-  "version": 1
+  "uid": "all-recent-builds"
 }

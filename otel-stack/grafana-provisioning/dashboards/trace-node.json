@@ -18,7 +18,7 @@
   "editable": true,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 0,
-  "id": 5,
+  "id": 2,
   "links": [],
   "panels": [
     {
@@ -31,7 +31,7 @@
         "overrides": []
       },
       "gridPos": {
-        "h": 16,
+        "h": 21,
         "w": 24,
         "x": 0,
         "y": 0
@@ -39,7 +39,7 @@
       "id": 1,
       "options": {
         "edges": {},
-        "layoutAlgorithm": "layered",
+        "layoutAlgorithm": "force",
         "nodes": {},
         "zoomMode": "cooperative"
       },
@@ -91,6 +91,5 @@
   "timepicker": {},
   "timezone": "browser",
   "title": "Trace graph",
-  "uid": "trace-graph",
-  "version": 2
+  "uid": "trace-graph"
 }
