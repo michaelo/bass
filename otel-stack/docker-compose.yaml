@@ -13,6 +13,7 @@ services:
       otel:
     environment:
       - GF_PATHS_PROVISIONING=/opt/grafana-provisioning
+      - GF_USERS_HOME_PAGE=/d/all-recent-builds/
     volumes:
       - ./grafana-provisioning:/opt/grafana-provisioning
   # Due to lacking "Access-Control-Allow-Origin"-header from tempo API we'll spin up an nginx as proxy to add this
