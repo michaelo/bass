@@ -209,6 +209,7 @@ class ExecStatus(Enum):
     UNKNOWN = 1
     TIMEOUT = 2
     ERROR = 3
+    # SKIPPED ?
 
 exec_status_to_otel = {
     0: 1, # OK
@@ -219,29 +220,26 @@ exec_status_to_otel = {
 
 def exec_step(step, changeset) -> tuple[ExecStatus, str, str]:
     """Returns tuple of (status, stdout, stderr)"""
-    if not check_if_changeset_matches(changeset, step.get("if-changeset-matches", None)):
-        return (ExecStatus.OK, f"Skpping step: {step["name"]}", "")
-    else:
-        timeout = step["timeout"] if "timeout" in step else None
-        try:
-            cmd = None
-            if type(step["exec"]) == str:
-                cmd = [step["exec"]]
+    timeout = step["timeout"] if "timeout" in step else None
+    try:
+        cmd = None
+        if type(step["exec"]) == str:
+            cmd = [step["exec"]]
 
-            if type(step["exec"]) == list:
-                cmd = step["exec"]
-            
-            if not cmd:
-                logging.error(f"Unknown command type: {type(exec["step"])}")
-                return (ExecStatus.UNKNOWN, "", f"Unknown command type: {type(exec["step"])}")
-            
-            # Resolve variables in cmd and execute
-            cmd_expanded = [os.path.expandvars(v) for v in cmd]
-            
-            result = subprocess.run(cmd_expanded, capture_output=True, timeout=timeout)
-            return (ExecStatus.OK if result.returncode == 0 else ExecStatus.ERROR, result.stdout.decode(), result.stderr.decode())
-        except subprocess.TimeoutExpired as e:
-            return (ExecStatus.TIMEOUT, e.output, str(e))
+        if type(step["exec"]) == list:
+            cmd = step["exec"]
+        
+        if not cmd:
+            logging.error(f"Unknown command type: {type(exec["step"])}")
+            return (ExecStatus.UNKNOWN, "", f"Unknown command type: {type(exec["step"])}")
+        
+        # Resolve variables in cmd and execute
+        cmd_expanded = [os.path.expandvars(v) for v in cmd]
+        
+        result = subprocess.run(cmd_expanded, capture_output=True, timeout=timeout)
+        return (ExecStatus.OK if result.returncode == 0 else ExecStatus.ERROR, result.stdout.decode(), result.stderr.decode())
+    except subprocess.TimeoutExpired as e:
+        return (ExecStatus.TIMEOUT, e.output, str(e))
 
 
 def build_inner(args, node, parent_span_id, changeset) -> ExecStatus:
@@ -253,43 +251,68 @@ def build_inner(args, node, parent_span_id, changeset) -> ExecStatus:
     spanner = create_span_sender(args.traces_endpoint, args.service_name, args.trace_id)
     logger = create_log_sender(args.logs_endpoint, args.service_name, args.trace_id)
 
+    got_error = False
+
+    if not check_if_changeset_matches(changeset, node.get("if-changeset-matches", None)):
+        # , f"Skpping step: {step["name"]}", "")
+        # TODO: Make span?
+        return ExecStatus.OK
+
     initial_cwd = os.getcwd()
     if "cwd" in node:
         # TODO: ensure we don't navigate out of repo/workspace?
         os.chdir(f"{initial_cwd}/{node["cwd"]}")
         logging.info(f"Changing chdir to: {os.getcwd()}")
-    
-    if "exec" in node:
-        try:
-            (step_status, step_stdout, step_stderr) = exec_step(node, changeset)
-        except Exception as e:
-            (step_status, step_stdout, step_stderr) = (ExecStatus.ERROR, "", str(e))
 
-        if step_status.value > result.value:
-            result = step_status
+    if "setup" in node:
+        step_result = build_inner(args, node["setup"], span_id, changeset)
+        if step_result != ExecStatus.OK:
+            got_error = True
 
-        if len(step_stderr) > 0:
-            logger(span_id, "ERROR", step_stderr)
+    if not got_error:
+        if "exec" in node:
+            try:
+                (step_status, step_stdout, step_stderr) = exec_step(node, changeset)
+            except Exception as e:
+                (step_status, step_stdout, step_stderr) = (ExecStatus.ERROR, "", str(e))
 
-        if len(step_stdout) > 0:
-            logger(span_id, "INFO", step_stdout)
-    elif "steps" in node:
-        if "order" in node and node["order"] == "unordered":
-            # TODO: Make num workers configurable?
-            with ThreadPoolExecutor(max_workers=5) as executor:
-                futures = []    
-                for step in node["steps"]:
-                    futures.append(executor.submit(build_inner, args, step, span_id, changeset))
+            if step_status.value > result.value:
+                result = step_status
 
-                for f in futures:
-                    step_result = f.result()
+            if len(step_stderr) > 0:
+                logger(span_id, "ERROR", step_stderr)
+
+            if len(step_stdout) > 0:
+                logger(span_id, "INFO", step_stdout)
+        elif "steps" in node:
+            if "order" in node and node["order"] == "unordered":
+                # TODO: Make num workers configurable?
+                with ThreadPoolExecutor(max_workers=5) as executor:
+                    futures = []    
+                    for step in node["steps"]:
+                        futures.append(executor.submit(build_inner, args, step, span_id, changeset))
+
+                    for f in futures:
+                        step_result = f.result()
+                        if step_result.value > result.value:
+                            result = step_result
+            else:
+                # got_error = False
+                for i, step in enumerate(node["steps"]):
+
+                    step_result = build_inner(args, step, span_id, changeset)
                     if step_result.value > result.value:
                         result = step_result
-        else:
-            for step in node["steps"]:
-                step_result = build_inner(args, step, span_id, changeset)
-                if step_result.value > result.value:
-                    result = step_result
+
+                    # If step_result != OK: Skip det remaining steps (status:unknown)
+                    if step_result != ExecStatus.OK:
+                        # TODO: add spans for remaining
+                        break
+                        # got_error = True
+
+
+    if "teardown" in node:
+        build_inner(args, node["teardown"], span_id, changeset)
 
     time_step_end = utcnow()
 
