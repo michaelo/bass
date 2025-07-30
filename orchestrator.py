@@ -3,6 +3,7 @@ import logging
 import http.server as server
 import json
 import os
+import re
 import argparse
 import bass
 
@@ -80,7 +81,9 @@ class HTTPRequestHandler(server.SimpleHTTPRequestHandler):
     def do_PUT(self):
         logging.info("got PUT")
 
+    # TODO: Support common webhook formats (bitbucket, github)
     def do_POST_webhook(self, params: dict) -> None:
+        time_start = bass.utcnow()
         # Parameter checks
         if "pipeline" not in params:
             self.send_error(400, "Invalid request")
@@ -90,22 +93,27 @@ class HTTPRequestHandler(server.SimpleHTTPRequestHandler):
             self.send_error(404, "No such job")
             return
         
+        pipeline = config["pipelines"][params["pipeline"]]
+        
         changed_refs = []
         if "changed-refs" in params:
             changed_refs = params["changed-refs"].split(",")
 
+        # TODO: Experimental: need to verify exact behaviour with actual webhooks triggered by tag-adds
+        tags = []
+        if "tag-pattern" in pipeline:
+            if not "tags" in params or not bass.core.any_item_matches(params["tags"].split(","), pipeline["tag-pattern"]):
+                # Suppress request
+                self.send_response(200)
+                self.end_headers()
+                self.wfile.write(b"")
+                return
+
 
         # Get it done!
-        # Create a preliminary root span which the worker will eventually update?
         trace_id = bass.generate_trace_id()
         root_span_id = bass.generate_span_id()
         service_name = f"bass:pipeline:{params['pipeline']}"
-
-        schedule_span = bass.generate_span(trace_id, root_span_id, bass.generate_span_id(), service_name, "onSchedule", bass.utcnow(), bass.utcnow(), 1)
-        (code, msg) = bass.request("POST", config["otel"]["traces-endpoint"], schedule_span, {"Content-Type": "application/json"})
-        if code != 200:
-            logging.error(f"Could not post schedule span: {code}, {msg}")
-
 
         scheduleJob({
             "name": params["pipeline"],
@@ -123,6 +131,12 @@ class HTTPRequestHandler(server.SimpleHTTPRequestHandler):
         self.send_response(200)
         self.end_headers()
         self.wfile.write(b"")
+
+        schedule_span = bass.generate_span(trace_id, root_span_id, bass.generate_span_id(), service_name, "onSchedule", time_start, bass.utcnow(), 1)
+        (code, msg) = bass.request("POST", config["otel"]["traces-endpoint"], schedule_span, {"Content-Type": "application/json"})
+        if code != 200:
+            logging.error(f"Could not post schedule span: {code}, {msg}")
+
 
     def do_POST_dequeue(self, params: dict) -> None:
         # If auth'd

@@ -124,29 +124,29 @@ def generate_trace_id():
 def generate_span_id():
     return generate_hex_string(8)
 
-def check_if_changeset_matches(changeset: list[str], match_criteria: None|str):
-    # No changeset is all changes
-    if not changeset or len(changeset) == 0:
-        return True
+def any_item_matches(items: list[str], match_criteria: None|str, default=True):
+    # No items is all changes
+    if not items or len(items) == 0:
+        return default
 
     # No criteria is all criteria
     if not match_criteria:
-        return True
+        return default
     
-    # If changeset provided, and "if-changes-match"-filter set: verify if any of them matches
+    # If items provided, and "if-changes-match"-filter set: verify if any of them matches
     exp = re.compile(match_criteria)
     
-    for change in changeset:
+    for change in items:
         if exp.search(change) != None:
             return True
         
     return False
 
-def test_check_if_changeset_matches():
-    assert check_if_changeset_matches([], None)
-    assert check_if_changeset_matches(["some/path"], None)
-    assert check_if_changeset_matches(["some/path", "another/path"], "^another")
-    assert not check_if_changeset_matches(["some/path"], "^another")
+def test_any_item_matches():
+    assert any_item_matches([], None)
+    assert any_item_matches(["some/path"], None)
+    assert any_item_matches(["some/path", "another/path"], "^another")
+    assert not any_item_matches(["some/path"], "^another")
 
 def job_argparse(pipeline_name:str):
     parser = argparse.ArgumentParser(
@@ -253,7 +253,7 @@ def build_inner(args, node, parent_span_id, changeset) -> ExecStatus:
 
     got_error = False
 
-    if not check_if_changeset_matches(changeset, node.get("if-changeset-matches", None)):
+    if not any_item_matches(changeset, node.get("if-changeset-matches", None)):
         # , f"Skpping step: {step["name"]}", "")
         # TODO: Make span?
         return ExecStatus.OK
