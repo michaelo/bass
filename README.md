@@ -57,6 +57,38 @@ Build entry point requirements / recommendations:
         * path to file with list (by line) of modified files related to triggering the build. Allows build steps to conditionally execute upon need.
 
 
+Pipelines configuration:
+---
+
+```json
+{
+    "pipeline-name": {
+        "repository": "git@github.com:michaelo/bass.git",
+        "ref": "main",
+        "cwd": "./testpipelines",
+        "exec": ["python3", "job-simple.py"],
+        "notifications": {
+            "onFailure": {
+                "email": {
+                    "to": "webmaster@localhost",
+                    "subject": "Build $PIPELINE_NAME failed",
+                    "body": "Build: <b>$TRACEID</b> failed"
+                }
+            },
+            "onSuccess": {
+                "email": {
+                    "to": "webmaster@localhost",
+                    "subject": "Build $PIPELINE_NAME succeeded",
+                    "body": "Build: <b>$TRACEID</b> succeeded"
+                }
+            }
+        }
+    },
+    "pipeline-2": {...}
+}
+```
+
+
 Python builder:
 ---
 
@@ -71,6 +103,8 @@ Each `Node` in the build graph can either specify a command to execute or a set 
     -- general fields for all nodes
     "name": "step name",
     "if-changeset-matches": "regex-pattern", -- optional
+    "setup": { ... sub node }, -- will always be executed. If it fails, no exec/steps will be processed
+    "teardown": { ... sub node 1 }, -- will always be executed
 
     -- if exec node:
     "timeout": "10", -- seconds, optional
@@ -84,16 +118,22 @@ Each `Node` in the build graph can either specify a command to execute or a set 
 ```
 
 
-Alternative solutions
+Feature overview (and alternative solutions)
 ---
 You should most likely not try to pitch this to your enterprise organisation. You should probably consider CircleCI, GitHub Actions, Jenkins, Jenkins X, Airflow etc first.
 
 This project aims to replace any and all issues I've had with common CI/CD-tools such as Jenkins and GitHub Actions, e.g.:
 
-* unability to test-run pipelines locally
-* cumbersome to stay on top of dependency versions for anything but "latest"
-* trouble to explicitly defining all configuration via files
+* unability to test-run pipelines locally - bass build scripts are just executables in the repo who sends traces and logs. A reference-implementation in Python is provided.
+* cumbersome to stay on top of dependency versions for anything but "latest" - there are no dependencies besides Python. All intended batteries are included.
+* trouble to explicitly defining all configuration via files - everything is configurable (only) by files and command line arguments
 * simple to run and manage out of cloud
+* flexible pipeline composition out of the box - see the capabilities of Python reference implementation under "Python builder"
+
+Other, more common, features:
+
+* supports multiple workers/agents, with separate capabilities (see --tags)
+* email notifications on success/failure
 * ...
 
 This project aims for reasonable (per my personal opinion of reasonable) minimalism, and shall not have an ever-expanding feature set once v1 is reached.
@@ -119,24 +159,24 @@ Dev-notes
 Design decisions:
 ---
 * Assume https between workers and orchestrator in cases with secrets
+    * Actual setup of https is currently deferred to the user via e.g. nginx + Let's Encrypt
 * Orchestrator gets provided - at startup - a list of pipelines configurations
     * Each config item can specify configuration options for poll and/or webhook triggers (webhook being pri 1)
-* The worker nodes must be pre-configured with necessary git auth setup making "git clone {repo}" just work
+* The worker nodes must be pre-configured with necessary git auth setup making "git clone {repo}" just work + any tools required by the actual build scripts
 * Seperation of concerns:
     * Pipelines defined directly to orchestrator. No knowledge of actual build
     * Everything build-related in job-description in repo
-    * All state regarding OTEL-endpoints, secrets etc shall be provided orchestrator every time.
+    * All state regarding OTEL-endpoints, secrets etc shall be provided by orchestrator every time
     * The workers will need to start knowing the orchestrator-URL + secret
 * Workers poll for work orders from orchestrator
 
 
 TODO / TBD:
 ---
-* Ability to not execute certain steps in case of previous errors and such
-    * case: if test-step fails, don't run deploy-step
-    * case: always perform cleanup-step
+* Implement handling of common push/merge/tag-webhook events. E.g. for bitbucket and github.
+* Probably implement a proper request handling for orchestrator over the current http.server.test + SimpleHTTPRequestHandler
+* (Python builder:) Support callables as "exec" type?
 * CWD pr step - Ensure unability to "escape" workspace
-* Implement tag filter for webhooks - tbd: try out bitbucket integration?
 * HTTPS? Reverse proxy? e.g. Nginx?
 * Notifications:
     * Allow recipients based on a fixed set or the author of changeset?
