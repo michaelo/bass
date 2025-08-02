@@ -11,6 +11,19 @@ import subprocess
 from concurrent.futures import ThreadPoolExecutor
 
 type Severity = Literal["TRACE", "DEBUG", "INFO", "WARN", "ERROR", "FATAL"]
+class ExecStatus(Enum):
+    OK = 0 # Intentionally to play nice as exit code
+    UNKNOWN = 1
+    TIMEOUT = 2
+    ERROR = 3
+    # SKIPPED ?
+
+exec_status_to_otel = {
+    0: 1, # OK
+    1: 0, # unknown
+    2: 2, # ERRPR
+    3: 2 # ERROR
+}
 
 def generate_span(trace_id: str, parent_span_id: None|str, span_id: str, service: str, name: str, time_from: datetime.datetime, time_to: datetime.datetime, status: int):
     return {
@@ -47,6 +60,15 @@ def generate_span(trace_id: str, parent_span_id: None|str, span_id: str, service
             }
         ]
     }
+
+def create_span_sender(traces_endpoint: str, service_name: str, trace_id: str) -> Callable[[str, str, str, datetime.datetime, datetime.datetime, int], None]:
+    def span_sender(name: str, parent_span_id: None|str, span_id: str, time_from:datetime.datetime, time_to:datetime.datetime, status: int):
+        span = generate_span(trace_id, parent_span_id, span_id, service_name, name, time_from, time_to, status)
+        (status, body) = request("POST", traces_endpoint, span, headers={"Content-Type": "application/json"})
+        if status != 200:
+            logging.error(f"Could not post span. Reason: {body}")
+
+    return span_sender
 
 def generate_log(trace_id: str, span_id: str, service: str, severity: Severity, message: str):
     sevMap = {
@@ -92,6 +114,16 @@ def generate_log(trace_id: str, span_id: str, service: str, severity: Severity, 
         ]
     }
 
+def create_log_sender(logs_endpoint: str, service_name: str, trace_id: str) -> Callable[[str, Severity, str], None]:
+    def log_sender(span_id: str, severity: Severity, message: str):
+        logging.debug(message)
+        log = generate_log(trace_id, span_id, service_name, severity, message)
+        (status, body) = request("POST", logs_endpoint, log, headers={"Content-Type": "application/json"})
+        if status != 200:
+            logging.error(f"Could not post log. Reason: {body}")
+
+    return log_sender
+
 def request(method: Literal["GET", "POST", "PUT", "DELETE"], url, payload=None, headers={}) -> tuple[int, str|None]:
     req = urq.Request(url)
     req.method = method
@@ -118,11 +150,23 @@ def datetime_to_nano(time: datetime.datetime):
 def generate_hex_string(bytes: int):
     return os.urandom(bytes).hex()
 
+def test_generate_hex_string():
+    exp = re.compile("^[0-9a-fA-F]+$")
+    hexstring = generate_hex_string(128)
+    assert exp.match(hexstring)
+    assert len(hexstring) == 256
+
 def generate_trace_id():
     return generate_hex_string(16)
 
+def test_generate_trace_id():
+    assert len(generate_trace_id()) == 32
+
 def generate_span_id():
     return generate_hex_string(8)
+
+def test_generate_span_id():
+    assert len(generate_span_id()) == 16
 
 def any_item_matches(items: list[str], match_criteria: None|str, default=True):
     # No items is all changes
@@ -185,40 +229,7 @@ def assert_pipeline(node) -> bool:
         for step in node["steps"]:
             assert_pipeline(step)
 
-def create_span_sender(traces_endpoint: str, service_name: str, trace_id: str) -> Callable[[str, str, str, datetime.datetime, datetime.datetime, int], None]:
-    def span_sender(name: str, parent_span_id: None|str, span_id: str, time_from:datetime.datetime, time_to:datetime.datetime, status: int):
-        span = generate_span(trace_id, parent_span_id, span_id, service_name, name, time_from, time_to, status)
-        (status, body) = request("POST", traces_endpoint, span, headers={"Content-Type": "application/json"})
-        if status != 200:
-            logging.error(f"Could not post span. Reason: {body}")
-
-    return span_sender
-
-def create_log_sender(logs_endpoint: str, service_name: str, trace_id: str) -> Callable[[str, Severity, str], None]:
-    def log_sender(span_id: str, severity: Severity, message: str):
-        logging.debug(message)
-        log = generate_log(trace_id, span_id, service_name, severity, message)
-        (status, body) = request("POST", logs_endpoint, log, headers={"Content-Type": "application/json"})
-        if status != 200:
-            logging.error(f"Could not post log. Reason: {body}")
-
-    return log_sender
-
-class ExecStatus(Enum):
-    OK = 0 # Intentionally to play nice as exit code
-    UNKNOWN = 1
-    TIMEOUT = 2
-    ERROR = 3
-    # SKIPPED ?
-
-exec_status_to_otel = {
-    0: 1, # OK
-    1: 0, # unknown
-    2: 2, # ERRPR
-    3: 2 # ERROR
-}
-
-def exec_step(step, changeset) -> tuple[ExecStatus, str, str]:
+def exec_step(step) -> tuple[ExecStatus, str, str]:
     """Returns tuple of (status, stdout, stderr)"""
     timeout = step["timeout"] if "timeout" in step else None
     try:
@@ -243,19 +254,19 @@ def exec_step(step, changeset) -> tuple[ExecStatus, str, str]:
 
 
 def build_inner(args, node, parent_span_id, changeset) -> ExecStatus:
+    # TODO: Consolidate usage of got_error and status?
     # Check node: if exec: execute directly. If steps: recurse.
     time_step_start = utcnow()
     span_id = generate_span_id()
-    result = ExecStatus.OK
+    aggregated_result = ExecStatus.OK
     
     spanner = create_span_sender(args.traces_endpoint, args.service_name, args.trace_id)
     logger = create_log_sender(args.logs_endpoint, args.service_name, args.trace_id)
 
-    got_error = False
+    skip_remaining_steps = False
 
     if not any_item_matches(changeset, node.get("if-changeset-matches", None)):
-        # , f"Skpping step: {step["name"]}", "")
-        # TODO: Make span?
+        spanner(f"step:{node['name']} - skipped", parent_span_id, span_id, utcnow(), utcnow(), 0)
         return ExecStatus.OK
 
     initial_cwd = os.getcwd()
@@ -267,17 +278,20 @@ def build_inner(args, node, parent_span_id, changeset) -> ExecStatus:
     if "setup" in node:
         step_result = build_inner(args, node["setup"], span_id, changeset)
         if step_result != ExecStatus.OK:
-            got_error = True
+            skip_remaining_steps = True
 
-    if not got_error:
+        if step_result.value > aggregated_result.value:
+            aggregated_result = step_result
+
+    if not skip_remaining_steps:
         if "exec" in node:
             try:
-                (step_status, step_stdout, step_stderr) = exec_step(node, changeset)
+                (step_result, step_stdout, step_stderr) = exec_step(node)
             except Exception as e:
-                (step_status, step_stdout, step_stderr) = (ExecStatus.ERROR, "", str(e))
+                (step_result, step_stdout, step_stderr) = (ExecStatus.ERROR, "", str(e))
 
-            if step_status.value > result.value:
-                result = step_status
+            if step_result.value > aggregated_result.value:
+                aggregated_result = step_result
 
             if len(step_stderr) > 0:
                 logger(span_id, "ERROR", step_stderr)
@@ -294,21 +308,20 @@ def build_inner(args, node, parent_span_id, changeset) -> ExecStatus:
 
                     for f in futures:
                         step_result = f.result()
-                        if step_result.value > result.value:
-                            result = step_result
+                        if step_result.value > aggregated_result.value:
+                            aggregated_result = step_result
             else:
-                # got_error = False
                 for i, step in enumerate(node["steps"]):
+                    if not skip_remaining_steps:
+                        step_result = build_inner(args, step, span_id, changeset)
+                        if step_result.value > aggregated_result.value:
+                            aggregated_result = step_result
+                        
+                        if aggregated_result != ExecStatus.OK:
+                            skip_remaining_steps = True
+                    else:
+                        spanner(f"step:{step['name']} - skipped", span_id, generate_span_id(), utcnow(), utcnow(), 0)
 
-                    step_result = build_inner(args, step, span_id, changeset)
-                    if step_result.value > result.value:
-                        result = step_result
-
-                    # If step_result != OK: Skip det remaining steps (status:unknown)
-                    if step_result != ExecStatus.OK:
-                        # TODO: add spans for remaining
-                        break
-                        # got_error = True
 
 
     if "teardown" in node:
@@ -318,9 +331,9 @@ def build_inner(args, node, parent_span_id, changeset) -> ExecStatus:
 
     os.chdir(initial_cwd)
 
-    spanner(f"step:{node['name']}", parent_span_id, span_id, time_step_start, time_step_end, exec_status_to_otel[result.value])
+    spanner(f"step:{node['name']}", parent_span_id, span_id, time_step_start, time_step_end, exec_status_to_otel[aggregated_result.value])
 
-    return result
+    return aggregated_result
 
 def build(pipeline):
     args = job_argparse(pipeline["name"])
