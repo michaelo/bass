@@ -5,7 +5,6 @@ logging.getLogger().setLevel(logging.DEBUG)
 
 pipeline = {
     "name": "mypipeline",
-    # "timeout": 240, # TBD: support timeout on the entire process?
     "steps": [
         {
             "name": "build",

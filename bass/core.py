@@ -311,6 +311,7 @@ def build_inner(io: IoContext, args, node, parent_span_id, changeset) -> ExecSta
         elif "steps" in node:
             if "order" in node and node["order"] == "unordered":
                 # TODO: Make num workers configurable
+                # TODO: Make threadpool respect timeout?
                 with ThreadPoolExecutor(max_workers=5) as executor:
                     futures = []    
                     for step in node["steps"]:
@@ -386,10 +387,9 @@ class TestIoContext(IoContext):
 
     def run(self, cmd: list[str], timeout: int):
         self.run_history.append((cmd, timeout))
-        if cmd in self.predefs:
-            return self.predefs[cmd]
-        else:
-            return (0, "", "")
+        result = self.predefs.get((tuple(cmd), timeout), (0, "", ""))
+        return result
+
 
     def chdir(self, dir:str):
         self.chdir_history.append(dir)
@@ -426,3 +426,19 @@ def test_pipeline_with_changeset_and_filter_shall_skip_step_unless_matched():
     assert len(ctx.run_history) == 1
     build_inner(ctx, dummy_argparse(), pipeline, "", ["someotherdir/somefile"])
     assert len(ctx.run_history) == 1
+
+def test_pipeline_ordered_pipeline_steps_shall_skip_remaining_steps_after_first_error():
+    ctx = TestIoContext(
+        {
+            (("fail.sh",), None): (1, "", ""),
+        })
+    pipeline = {
+        "name": "root",
+        "steps": [
+            {"name": "step1", "exec": "success.sh"},
+            {"name": "step2", "exec": "fail.sh"},
+            {"name": "step3", "exec": "never-executed.sh"},
+        ]}
+    build_inner(ctx, dummy_argparse(), pipeline, "", [])
+    assert len(ctx.run_history) == 2
+    assert ctx.run_history == [(["success.sh"], None), (["fail.sh"], None)]
