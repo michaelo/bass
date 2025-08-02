@@ -25,6 +25,18 @@ exec_status_to_otel = {
     3: 2 # ERROR
 }
 
+class IoContext:
+    """Provides a convenient way to override realization of basic system/IO operations"""
+    def run(self, cmd: list[str], timeout: int) -> tuple[int, str, str]:
+        result = subprocess.run(cmd, capture_output=True, timeout=timeout)
+        return (result.returncode, result.stdout.decode(), result.stderr.decode())
+    
+    def chdir(self, dir:str):
+        return os.chdir(dir)
+
+    def getcwd(self) -> str:
+        return os.getcwd()
+
 def generate_span(trace_id: str, parent_span_id: None|str, span_id: str, service: str, name: str, time_from: datetime.datetime, time_to: datetime.datetime, status: int):
     return {
         "resourceSpans": [
@@ -229,7 +241,7 @@ def assert_pipeline(node) -> bool:
         for step in node["steps"]:
             assert_pipeline(step)
 
-def exec_step(step) -> tuple[ExecStatus, str, str]:
+def exec_step(io: IoContext, step) -> tuple[ExecStatus, str, str]:
     """Returns tuple of (status, stdout, stderr)"""
     timeout = step["timeout"] if "timeout" in step else None
     try:
@@ -246,14 +258,13 @@ def exec_step(step) -> tuple[ExecStatus, str, str]:
         
         # Resolve variables in cmd and execute
         cmd_expanded = [os.path.expandvars(v) for v in cmd]
-        
-        result = subprocess.run(cmd_expanded, capture_output=True, timeout=timeout)
-        return (ExecStatus.OK if result.returncode == 0 else ExecStatus.ERROR, result.stdout.decode(), result.stderr.decode())
+        (returncode, stdout, stderr) = io.run(cmd_expanded, timeout=timeout)
+        return (ExecStatus.OK if returncode == 0 else ExecStatus.ERROR, stdout, stderr)
     except subprocess.TimeoutExpired as e:
         return (ExecStatus.TIMEOUT, e.output, str(e))
 
 
-def build_inner(args, node, parent_span_id, changeset) -> ExecStatus:
+def build_inner(io: IoContext, args, node, parent_span_id, changeset) -> ExecStatus:
     # TODO: Consolidate usage of got_error and status?
     # Check node: if exec: execute directly. If steps: recurse.
     time_step_start = utcnow()
@@ -269,14 +280,14 @@ def build_inner(args, node, parent_span_id, changeset) -> ExecStatus:
         spanner(f"step:{node['name']} - skipped", parent_span_id, span_id, utcnow(), utcnow(), 0)
         return ExecStatus.OK
 
-    initial_cwd = os.getcwd()
+    initial_cwd = io.getcwd()
     if "cwd" in node:
         # TODO: ensure we don't navigate out of repo/workspace?
-        os.chdir(f"{initial_cwd}/{node["cwd"]}")
+        io.chdir(f"{initial_cwd}/{node["cwd"]}")
         logging.info(f"Changing chdir to: {os.getcwd()}")
 
     if "setup" in node:
-        step_result = build_inner(args, node["setup"], span_id, changeset)
+        step_result = build_inner(io, args, node["setup"], span_id, changeset)
         if step_result != ExecStatus.OK:
             skip_remaining_steps = True
 
@@ -286,7 +297,7 @@ def build_inner(args, node, parent_span_id, changeset) -> ExecStatus:
     if not skip_remaining_steps:
         if "exec" in node:
             try:
-                (step_result, step_stdout, step_stderr) = exec_step(node)
+                (step_result, step_stdout, step_stderr) = exec_step(io, node)
             except Exception as e:
                 (step_result, step_stdout, step_stderr) = (ExecStatus.ERROR, "", str(e))
 
@@ -304,7 +315,7 @@ def build_inner(args, node, parent_span_id, changeset) -> ExecStatus:
                 with ThreadPoolExecutor(max_workers=5) as executor:
                     futures = []    
                     for step in node["steps"]:
-                        futures.append(executor.submit(build_inner, args, step, span_id, changeset))
+                        futures.append(executor.submit(build_inner, io, args, step, span_id, changeset))
 
                     for f in futures:
                         step_result = f.result()
@@ -313,7 +324,7 @@ def build_inner(args, node, parent_span_id, changeset) -> ExecStatus:
             else:
                 for i, step in enumerate(node["steps"]):
                     if not skip_remaining_steps:
-                        step_result = build_inner(args, step, span_id, changeset)
+                        step_result = build_inner(io, args, step, span_id, changeset)
                         if step_result.value > aggregated_result.value:
                             aggregated_result = step_result
                         
@@ -325,11 +336,11 @@ def build_inner(args, node, parent_span_id, changeset) -> ExecStatus:
 
 
     if "teardown" in node:
-        build_inner(args, node["teardown"], span_id, changeset)
+        build_inner(io, args, node["teardown"], span_id, changeset)
 
     time_step_end = utcnow()
 
-    os.chdir(initial_cwd)
+    io.chdir(initial_cwd)
 
     spanner(f"step:{node['name']}", parent_span_id, span_id, time_step_start, time_step_end, exec_status_to_otel[aggregated_result.value])
 
@@ -349,7 +360,7 @@ def build(pipeline):
     root_span_id = args.root_span_id
 
     root_start = utcnow()
-    exit_code = build_inner(args, pipeline, root_span_id, changeset)
+    exit_code = build_inner(IoContext(), args, pipeline, root_span_id, changeset)
     root_end = utcnow()
     
     if args.generate_root_span:
@@ -357,3 +368,62 @@ def build(pipeline):
     
     logging.info(f"Execution concluded with status: {exit_code} / {exit_code.value}")
     exit(exit_code.value)
+
+class TestIoContext(IoContext):
+    """Simple IO context realization which logs every usage, and provides a way to inject predefined results for command executions"""
+    __test__ = False
+
+    predefs = {}
+    run_history: list[tuple[list[str], int]] = []
+    chdir_history: list[str] = []
+    cwd = ""
+
+    def __init__(self, predefs: dict = {}):
+        self.run_history = []
+        self.chdir_history = []
+        self.cwd = ""
+        if predefs:
+            self.predefs = predefs
+
+    def run(self, cmd: list[str], timeout: int):
+        self.run_history.append((cmd, timeout))
+        if cmd in self.predefs:
+            return self.predefs[cmd]
+        else:
+            return (0, "", "")
+
+    def chdir(self, dir:str):
+        self.chdir_history.append(dir)
+        self.cwd = dir
+
+    def getcwd(self) -> str:
+        return self.cwd
+
+
+def dummy_argparse():
+    return argparse.Namespace(traces_endpoint="http://localhost:4318/v1/traces", logs_endpoint="http://localhost:4318/v1/traces", service_name="test", trace_id="")
+
+def test_pipeline_with_no_commands_executes_nothing():
+    ctx = TestIoContext()
+    build_inner(ctx, dummy_argparse(), {"name": "root"}, "", [])
+    assert len(ctx.run_history) == 0
+
+def test_pipeline_with_command_executes_it():
+    ctx = TestIoContext()
+    build_inner(ctx, dummy_argparse(), {"name": "root", "exec": "myscript.sh"}, "", [])
+    assert len(ctx.run_history) == 1
+    assert ctx.run_history[0] == (["myscript.sh"], None)
+
+def test_pipeline_with_cwd_shall_change_to_dir():
+    ctx = TestIoContext()
+    build_inner(ctx, dummy_argparse(), {"name": "root", "cwd": "somedir"}, "", [])
+    assert len(ctx.chdir_history) == 2
+    assert ctx.chdir_history[0] == "/somedir"
+
+def test_pipeline_with_changeset_and_filter_shall_skip_step_unless_matched():
+    ctx = TestIoContext()
+    pipeline = {"name": "root", "if-changeset-matches": "^somedir", "exec": "myscript.sh"}
+    build_inner(ctx, dummy_argparse(), pipeline, "", ["somedir/somefile"])
+    assert len(ctx.run_history) == 1
+    build_inner(ctx, dummy_argparse(), pipeline, "", ["someotherdir/somefile"])
+    assert len(ctx.run_history) == 1
