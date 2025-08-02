@@ -265,7 +265,6 @@ def exec_step(io: IoContext, step) -> tuple[ExecStatus, str, str]:
 
 
 def build_inner(io: IoContext, args, node, parent_span_id, changeset) -> ExecStatus:
-    # TODO: Consolidate usage of got_error and status?
     # Check node: if exec: execute directly. If steps: recurse.
     time_step_start = utcnow()
     span_id = generate_span_id()
@@ -311,7 +310,7 @@ def build_inner(io: IoContext, args, node, parent_span_id, changeset) -> ExecSta
                 logger(span_id, "INFO", step_stdout)
         elif "steps" in node:
             if "order" in node and node["order"] == "unordered":
-                # TODO: Make num workers configurable?
+                # TODO: Make num workers configurable
                 with ThreadPoolExecutor(max_workers=5) as executor:
                     futures = []    
                     for step in node["steps"]:

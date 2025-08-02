@@ -181,9 +181,6 @@ TODO / TBD:
 * Notifications:
     * Allow recipients based on a fixed set or the author of changeset?
     * Establish which variables shall be available
-* Automated integration tests?
-    * Strategy a) Analyze data sent to otel collector?
-    * Strategy b) restructure components to more simply analyze and evaluate I/O
 * Separate service name between orchestrator, worker and job? Root span naming the pipeline should be enough to identify jobs
 * Top level of pipeline now gets its own additional span (after pipeline/step->node rewrite) - unclear if this is optimal. Either remove from generation, or provide visualization that takes it into account. 
 * Improved orchestrator config handling:
