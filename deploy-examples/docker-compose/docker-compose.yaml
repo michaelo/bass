@@ -1,0 +1,23 @@
+services:
+  orchestrator:
+    build:
+      context: ../..
+      dockerfile: Dockerfile.Orchestrator
+    ports:
+      - 8080:8080
+    environment:
+      - PORT=8080
+    volumes:
+      - ./worker-keys:/opt/bass/worker-keys
+      - ./pipelines.json:/opt/bass/pipelines.json
+  worker:
+    build:
+      context: ../..
+      dockerfile: Dockerfile.Worker
+    environment:
+      - DEQUEUE_ENDPOINT=http://orchestrator:8080/dequeue
+    volumes:
+      - ./worker-key.env:/opt/bass/api-key
+      # Inject SSH-keys
+      # - ./ssh-keys:/home/appuser/.ssh
+      - /Users/michael/.ssh:/home/appuser/.ssh

@@ -400,6 +400,7 @@ class TestIoContext(IoContext):
 
 
 def dummy_argparse():
+    """Provides a Namespace-object similar to job_argparse() - to use for testing"""
     return argparse.Namespace(traces_endpoint="http://localhost:4318/v1/traces", logs_endpoint="http://localhost:4318/v1/traces", service_name="test", trace_id="")
 
 def test_pipeline_with_no_commands_executes_nothing():
@@ -442,3 +443,30 @@ def test_pipeline_ordered_pipeline_steps_shall_skip_remaining_steps_after_first_
     build_inner(ctx, dummy_argparse(), pipeline, "", [])
     assert len(ctx.run_history) == 2
     assert ctx.run_history == [(["success.sh"], None), (["fail.sh"], None)]
+
+def test_pipeline_if_setup_fails_run_no_steps():
+    ctx = TestIoContext({
+        (("fail.sh",), None): (1, "", ""),
+    })
+    pipeline = {
+        "name": "root",
+        "setup": {"name": "setup", "exec": "fail.sh"},
+        "steps": [
+            {"name": "step1", "exec": "never-executed.sh"},
+        ]}
+    build_inner(ctx, dummy_argparse(), pipeline, "", [])
+    assert len(ctx.run_history) == 1
+    assert ctx.run_history == [(["fail.sh"], None)]
+
+def test_pipeline_if_setup_fails_run_no_exec():
+    ctx = TestIoContext({
+        (("fail.sh",), None): (1, "", ""),
+    })
+    pipeline = {
+        "name": "root",
+        "setup": {"name": "setup", "exec": "fail.sh"},
+        "exec": "never-executed.sh"
+    }
+    build_inner(ctx, dummy_argparse(), pipeline, "", [])
+    assert len(ctx.run_history) == 1
+    assert ctx.run_history == [(["fail.sh"], None)]

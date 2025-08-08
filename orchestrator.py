@@ -3,7 +3,7 @@ import logging
 import http.server as server
 import json
 import os
-import re
+import signal
 import argparse
 import bass
 
@@ -11,9 +11,9 @@ logging.getLogger().setLevel(logging.INFO)
 
 # Will be propulated with configurations read from files according to arguments passed upon startup
 config = {
-    "pipelines": {},
-    "env": {},
-    "api-keys": {},
+    "pipelines": {}, # <pipelinename>: {}-entries
+    "env": {}, # <key>:<value>-entries
+    "api-keys": {}, # <key>:True-entries
     "otel": {
         "traces-endpoint": "http://localhost:4318/v1/traces",
         "logs-endpoint": "http://localhost:4318/v1/logs"
@@ -55,7 +55,6 @@ def parse_path(path_raw: str) -> tuple[str, dict[str:str]]:
             params[k] = v
 
     return (base, params)
-
     
 def test_parse_path():
     assert ("path", {}) == parse_path("path")
@@ -64,22 +63,18 @@ def test_parse_path():
     assert ("path", {"key": "val", "some": "else"}) == parse_path("path?key=val&some=else")
 
 class HTTPRequestHandler(server.SimpleHTTPRequestHandler):
-    def add_CORS_headers(self):
+    def send_CORS_headers(self):
         self.send_header('Access-Control-Allow-Origin', '*')
 
     def do_GET(self):
-        logging.info("got GET")
+        logging.info("got GET: %s", self.path)
         (path, _) = parse_path(self.path)
         if path == "/pipelines":
             self.send_response(200)
-            self.add_CORS_headers()
+            self.send_CORS_headers()
             self.send_header('Content-Type', 'application/json')
             self.end_headers()
             self.wfile.write(json.dumps(config["pipelines"]).encode("utf-8"))
-
-
-    def do_PUT(self):
-        logging.info("got PUT")
 
     # TODO: Support common webhook formats (bitbucket, github)
     def do_POST_webhook(self, params: dict) -> None:
@@ -212,6 +207,7 @@ def orch_argparse():
 
 
 if __name__ == '__main__':
+    signal.signal(signal.SIGTERM, lambda: exit(1))
     args = orch_argparse()
 
     # Load configs

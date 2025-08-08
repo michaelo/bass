@@ -5,6 +5,7 @@ import time
 import tempfile
 import os
 import subprocess
+import signal
 import argparse
 from string import Template
 import bass
@@ -226,6 +227,7 @@ def worker_argparse():
     return parser.parse_args()
 
 if __name__ == "__main__":
+    signal.signal(signal.SIGTERM, lambda: exit(1))
     args = worker_argparse()
     api_key = os.environ.get("BASS_API_KEY")
     if not api_key:

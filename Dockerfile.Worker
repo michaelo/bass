@@ -1,0 +1,61 @@
+# check=skip=JSONArgsRecommended,SecretsUsedInArgOrEnv
+# Example of basic worker-realization
+# For real use cases this must be bundled with all the tools required by your particular build pipelines
+FROM python:3.13.5-alpine AS base
+
+ENV DEQUEUE_ENDPOINT=http://orchestrator:8080/dequeue
+ENV TAGS="default"
+ENV WORKSPACE_ROOT=/tmp/bass
+# Inject secret by defining a file with BASS_API_KEY=<secret>
+ENV BASS_API_KEY_PATH=/opt/bass/api-key
+ENV UID=12345
+ENV GID=12345
+
+# Required packages
+RUN apk add git openssh
+
+RUN addgroup \
+    --gid "$GID" \
+    "appuser" \
+&&  adduser \
+    --disabled-password \
+    --gecos "" \
+    --home "/home/appuser" \
+    --ingroup "appuser" \
+    # --no-create-home \
+    --uid "$UID" \
+    appuser
+
+ENV HOME=/home/appuser
+
+# Does this create it?
+WORKDIR /tmp/bass
+RUN touch test
+
+WORKDIR /app
+
+COPY --chown=appuser:appuser --chmod=700 bass bass
+COPY --chown=appuser:appuser --chmod=700 worker.py .
+
+RUN cat <<EOF > /app/entry.sh
+#!/bin/sh
+exit_script() {
+    echo aborting!
+    kill -INT \$pid
+}
+function onterm() {
+    echo onterm
+}
+
+trap exit_script SIGINT
+trap onterm TERM
+
+source ${BASS_API_KEY_PATH} && export BASS_API_KEY && exec python worker.py --dequeue-endpoint ${DEQUEUE_ENDPOINT} --tags ${TAGS} --workspace-root ${WORKSPACE_ROOT} &
+
+pid=\$!
+wait \$pid
+EOF
+
+RUN chmod +x /app/entry.sh
+# ENTRYPOINT ". ${BASS_API_KEY_PATH} && python worker.py --dequeue-endpoint ${DEQUEUE_ENDPOINT} --tags ${TAGS} --workspace-root ${WORKSPACE_ROOT}"
+ENTRYPOINT ["/app/entry.sh"]

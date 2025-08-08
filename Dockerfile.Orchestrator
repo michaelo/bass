@@ -1,0 +1,25 @@
+# check=skip=JSONArgsRecommended
+FROM python:3.13.5-alpine AS base
+
+ENV PORT=8080
+ENV TRACES_ENDPOINT=http://localhost:4318/v1/traces
+ENV LOGS_ENDPOINT=http://localhost:4318/v1/logs
+ENV PIPELINES_FILE=/opt/bass/pipelines.json
+ENV ENV_FILE=/opt/bass/variables
+ENV WORKER_KEYS_FILE=/opt/bass/worker-keys
+ENV PYTHONPATH=/app
+
+USER guest
+
+WORKDIR /opt/bass
+
+RUN echo "{}" > pipelines.json
+RUN touch variables
+RUN touch worker-keys
+
+WORKDIR /app
+
+COPY --chown=guest:guest --chmod=700 bass bass
+COPY --chown=guest:guest --chmod=700 *.py .
+
+ENTRYPOINT python orchestrator.py --traces-endpoint ${TRACES_ENDPOINT} --logs-endpoint ${LOGS_ENDPOINT} --pipelines-file ${PIPELINES_FILE} --env-file ${ENV_FILE} --worker-keys-file ${WORKER_KEYS_FILE} --port ${PORT}
