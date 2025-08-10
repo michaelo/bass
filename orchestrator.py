@@ -62,12 +62,11 @@ def test_parse_path():
     assert ("path", {"key": "val"}) == parse_path("path?key=val")
     assert ("path", {"key": "val", "some": "else"}) == parse_path("path?key=val&some=else")
 
-class HTTPRequestHandler(server.SimpleHTTPRequestHandler):
+class HTTPRequestHandler(server.BaseHTTPRequestHandler):
     def send_CORS_headers(self):
         self.send_header('Access-Control-Allow-Origin', '*')
 
     def do_GET(self):
-        logging.info("got GET: %s", self.path)
         (path, _) = parse_path(self.path)
         if path == "/pipelines":
             self.send_response(200)
@@ -176,7 +175,6 @@ class HTTPRequestHandler(server.SimpleHTTPRequestHandler):
 
     def do_POST(self) -> None:
         """Save a file following a HTTP PUT request"""
-        logging.info("got POST: %s", self.path)
         (path, params) = parse_path(self.path)
 
         if path == "/dequeue":
@@ -237,5 +235,7 @@ if __name__ == '__main__':
         logging.info(f" {x}")
 
     logging.info("Loaded %d api keys", len(config["api-keys"].items()))
-    
-    server.test(HandlerClass=HTTPRequestHandler, port=args.port)
+
+    server = server.HTTPServer(('0.0.0.0', args.port), HTTPRequestHandler)
+    server.serve_forever()
+

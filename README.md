@@ -174,7 +174,6 @@ Design decisions:
 TODO / TBD:
 ---
 * Implement handling of common push/merge/tag-webhook events. E.g. for bitbucket and github.
-* Probably implement a proper request handling for orchestrator over the current http.server.test + SimpleHTTPRequestHandler
 * (Python builder:) Support callables as "exec" type?
 * CWD pr step - Ensure unability to "escape" workspace
 * HTTPS? Reverse proxy? e.g. Nginx?
