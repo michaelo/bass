@@ -35,46 +35,66 @@ def process(job: dict, args) -> ExecStatus:
 
     # Create workspace specific for the pipeline, ignore if already exists
     # Ensure local clone/workspace represents both pipeline and repository
+    # TBD: Capture all output and log as part of root span?
     repository_escaped = job["pipeline"]["repository"].replace("\\", "-").replace("/", "-")
     tmpdir = f"{args.workspace_root}/pipeline/{job["name"]}/{repository_escaped}"
     tmpfile_changeset = None
-    logging.info("Workspace: %s", tmpdir)
-    try:
-        os.makedirs(tmpdir)
-    except FileExistsError:
-        pass
 
     try:
-        # TODO: Span for initial steps?
-        os.chdir(tmpdir)
+        # Setup temporary area
+        logging.info("Workspace: %s", tmpdir)
+        try:
+            try:
+                os.makedirs(tmpdir)
+            except FileExistsError:
+                pass
 
+            os.chdir(tmpdir)
+        except:
+           logging.critical("Could not ensure workspace")
+           return ExecStatus.ERROR
+
+
+        # Ensure repo is up to date
+        logging.info("Synchronize repo")
         if os.path.exists(f"{tmpdir}/.git"):
             logging.info("Updating repository '%s' in: '%s'", job["pipeline"]["repository"], tmpdir)
-            subprocess.call(["git", "clean", "-xdf"])
-            subprocess.call(["git", "pull"])
+            if subprocess.call(["git", "clean", "-xdf"]) != 0:
+                logging.critical("Could not git clean")
+                return ExecStatus.ERROR
+            if subprocess.call(["git", "pull"]) != 0:
+                logging.critical("Could not git pull")
+                return ExecStatus.ERROR
         else:
             logging.info("Cloning repository '%s' to: '%s'", job["pipeline"]["repository"], tmpdir)
-            subprocess.call(["git", "clone", job["pipeline"]["repository"], "."])
+            if subprocess.call(["git", "clone", job["pipeline"]["repository"], "."]) != 0:
+                logging.critical("Could not git clone")
+                return ExecStatus.ERROR
 
         logging.info(f"Checking out: {job["pipeline"]["ref"]}")
-        subprocess.call(["git", "checkout", job["pipeline"]["ref"], "."])
-
-
-        if "cwd" in job["pipeline"]:
-            os.chdir(job["pipeline"]["cwd"])
+        if subprocess.call(["git", "checkout", job["pipeline"]["ref"], "."]) != 0:
+           logging.critical("Could not checkout ref")
+           return ExecStatus.ERROR
 
         # Print exact revision getting built
         try:
             ref = subprocess.check_output(["git", "show-ref"])
             logging.info(f"git show-ref: {ref.decode()}")
         except:
-            logging.warning("Could not call git show-ref")
+            logging.critical("Could not call git show-ref")
             logger(job["otel"]["root-span-id"], "WARN", "Could not call git show-ref")
+            return ExecStatus.ERROR
+        
+        # Prepare execution of pipeline
+        if "cwd" in job["pipeline"]:
+            os.chdir(job["pipeline"]["cwd"])
 
         # Execute job, will create sub spans - pass on trace and root span
         try:
             # Assume job accepts certain arguments
             command = list(job["pipeline"]["exec"]) + [
+                "--root",
+                tmpdir,
                 "--service-name",
                 job["otel"]["service-name"],
                 "--trace-id",
@@ -86,7 +106,6 @@ def process(job: dict, args) -> ExecStatus:
                 "--logs-endpoint",
                 job["otel"]["logs-endpoint"],
             ]
-
 
             # Get changes - resolve from list of git revisions to list of files
             changed_files = set()

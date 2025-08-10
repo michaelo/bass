@@ -31,8 +31,20 @@ class IoContext:
         result = subprocess.run(cmd, capture_output=True, timeout=timeout)
         return (result.returncode, result.stdout.decode(), result.stderr.decode())
     
-    def chdir(self, dir:str):
-        return os.chdir(dir)
+    def dir_contains(self, dir_expected_top: str, dir_expected_sub: str) -> bool:
+        """Returns True if 'dir_expected_sub' is either the same as - or a subfolder of- 'dir_expected_top'"""
+
+        dir_expected_top = os.path.join(os.path.realpath(dir_expected_top), '')
+        dir_expected_sub = os.path.realpath(dir_expected_sub)
+
+        return dir_expected_sub.startswith(dir_expected_top)
+    
+    def chdir(self, dir: str) -> bool:
+        try:
+            os.chdir(dir)
+            return True
+        except:
+            return False
 
     def getcwd(self) -> str:
         return os.getcwd()
@@ -208,8 +220,10 @@ def job_argparse(pipeline_name:str):
     parser = argparse.ArgumentParser(
                     prog = pipeline_name,
                     description = None,
-                    epilog = None)
+                    epilog = None,
+                    formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     
+    parser.add_argument("-r", "--root", type=os.path.realpath, action="store", default=os.path.realpath("."), help="The top level dir of which the pipeline is allowed to traverse")
     parser.add_argument("-s", "--service-name", type=str, action="store", default=f"bass:pipeline:{pipeline_name}", help="Name to use for otel trace")
     parser.add_argument("-i", "--trace-id", type=str, action="store", default=generate_trace_id(), help="")
     parser.add_argument("-d", "--root-span-id", type=str, action="store", default=generate_span_id(), help="")
@@ -273,6 +287,7 @@ def build_inner(io: IoContext, args, node, parent_span_id, changeset) -> ExecSta
     spanner = create_span_sender(args.traces_endpoint, args.service_name, args.trace_id)
     logger = create_log_sender(args.logs_endpoint, args.service_name, args.trace_id)
 
+    skip_all = False
     skip_remaining_steps = False
 
     if not any_item_matches(changeset, node.get("if-changeset-matches", None)):
@@ -281,11 +296,18 @@ def build_inner(io: IoContext, args, node, parent_span_id, changeset) -> ExecSta
 
     initial_cwd = io.getcwd()
     if "cwd" in node:
-        # TODO: ensure we don't navigate out of repo/workspace?
-        io.chdir(f"{initial_cwd}/{node["cwd"]}")
         logging.info(f"Changing chdir to: {os.getcwd()}")
 
-    if "setup" in node:
+        # TODO: ensure we don't navigate out of repo/workspace? Or even say that 
+        assumed_dir = f"{initial_cwd}/{node["cwd"]}"
+        if not io.dir_contains(args.root, assumed_dir):
+            logging.critical("chdir denied as requested dir is outside of repository")
+            logger(span_id, "ERROR", "chdir denied as requested dir is outside of repository")
+            skip_all = True
+        
+        io.chdir(assumed_dir)
+
+    if not skip_all and "setup" in node:
         step_result = build_inner(io, args, node["setup"], span_id, changeset)
         if step_result != ExecStatus.OK:
             skip_remaining_steps = True
@@ -293,7 +315,7 @@ def build_inner(io: IoContext, args, node, parent_span_id, changeset) -> ExecSta
         if step_result.value > aggregated_result.value:
             aggregated_result = step_result
 
-    if not skip_remaining_steps:
+    if not skip_all and not skip_remaining_steps:
         if "exec" in node:
             try:
                 (step_result, step_stdout, step_stderr) = exec_step(io, node)
@@ -335,7 +357,7 @@ def build_inner(io: IoContext, args, node, parent_span_id, changeset) -> ExecSta
 
 
 
-    if "teardown" in node:
+    if not skip_all and "teardown" in node:
         build_inner(io, args, node["teardown"], span_id, changeset)
 
     time_step_end = utcnow()
@@ -391,9 +413,10 @@ class TestIoContext(IoContext):
         return result
 
 
-    def chdir(self, dir:str):
+    def chdir(self, dir:str) -> bool:
         self.chdir_history.append(dir)
         self.cwd = dir
+        return True
 
     def getcwd(self) -> str:
         return self.cwd
@@ -401,7 +424,7 @@ class TestIoContext(IoContext):
 
 def dummy_argparse():
     """Provides a Namespace-object similar to job_argparse() - to use for testing"""
-    return argparse.Namespace(traces_endpoint="http://localhost:4318/v1/traces", logs_endpoint="http://localhost:4318/v1/traces", service_name="test", trace_id="")
+    return argparse.Namespace(root=".", traces_endpoint="http://localhost:4318/v1/traces", logs_endpoint="http://localhost:4318/v1/traces", service_name="test", trace_id="")
 
 def test_pipeline_with_no_commands_executes_nothing():
     ctx = TestIoContext()

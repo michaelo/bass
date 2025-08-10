@@ -38,6 +38,11 @@ Test-frontend (default: localhost:5173) - to explore more optimized visualizatio
     (cd frontend.vue/bass && bun dev)
 
 
+Example of using orchestrator and worker via OCI-images:
+
+    (cd deploy-examples/docker-compose && docker compose build && docker compose up)
+
+
 Build entry point requirements / recommendations:
 ---
 
@@ -180,15 +185,15 @@ TODO / TBD:
 * Notifications:
     * Allow recipients based on a fixed set or the author of changeset?
     * Establish which variables shall be available
-* Separate service name between orchestrator, worker and job? Root span naming the pipeline should be enough to identify jobs
 * Top level of pipeline now gets its own additional span (after pipeline/step->node rewrite) - unclear if this is optimal. Either remove from generation, or provide visualization that takes it into account. 
 * Improved orchestrator config handling:
     * Support pulling pipeline-config from URL
     * Live/periodic reload of config?
 * Implement pipeline change polling logic (will likely require local run-time state)
 * Evaluate Python as it was chosen for simple prototyping of logic flow and responsibilities:
-    * On the orchestrator/worker-side: Consider something more typesafe and efficient. Likely C or zig.
+    * On the orchestrator/worker-side: Consider something explicity typed (preferably more typesafe as well) and efficient. Likely C or zig.
     * On the job-side: it's treated as an executable, thus most languages/runtimes can do. But it need to support some given command line arguments + provide traces and logs to otelcol of choice
+        * TBD: make example utilizing bash or other languages for builds? consider combining with otel-cli for convenience.
 * Tempo
     * Increase max search interval:
     * query_frontend.search.max_duration (default=7d=168h)
@@ -204,7 +209,6 @@ TODO / TBD:
 * Custom Grafana panel to visualize multiple traces in a grid?
 * Evaluate going/supporting OTEL-free:
     * OTEL was chosen primarily to quickly see results as the orchestration logic got built. A local, tailored store will likely outperform for any reasonable amunts of data and traffic. May support both.
-* TBD: make example utilizing bash or other languages for builds? consider combining with otel-cli for convenience.
 
 Scratch:
 ----
